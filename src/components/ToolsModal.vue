@@ -5,7 +5,7 @@
       <div class="tools-modal-header">
         <div class="header-title-box">
           <div class="header-icon">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00f0ff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"></circle>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
@@ -17,11 +17,16 @@
         </div>
         <div class="header-btn-group">
           <button class="btn-refresh" title="Tải lại danh sách" @click="fetchTools">
-            <svg :class="{ spinning: isLoading }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg :class="{ spinning: isLoading }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
             </svg>
           </button>
-          <button class="btn-close" @click="$emit('close')">✕</button>
+          <button class="btn-close" title="Đóng modal" @click="$emit('close')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
         </div>
       </div>
 
@@ -67,7 +72,7 @@
             <!-- Chi tiết cấu hình thu gọn -->
             <div class="tool-detail-section">
               <div class="detail-header" @click="toggleDetail(tool.id)">
-                <span>⚙ Cấu hình & Schema</span>
+                <span>⚙ Cấu hình & Tham số (Schema)</span>
                 <span class="arrow" :class="{ open: expandedDetails[tool.id] }">▼</span>
               </div>
               <div v-if="expandedDetails[tool.id]" class="detail-content">
@@ -104,7 +109,7 @@
                   <button class="btn-run" :disabled="isTesting" @click="runToolTest(tool)">
                     {{ isTesting ? 'Đang thực thi...' : 'Chạy thử nghiệm' }}
                   </button>
-                  <button class="btn-cancel" @click="testingToolId = null">Đóng</button>
+                  <button class="btn-cancel" @click="testingToolId = null">Đóng test</button>
                 </div>
 
                 <div v-if="testResult" class="test-result-box" :class="{ error: !testResult.success }">
@@ -293,44 +298,56 @@ export default {
 </script>
 
 <style scoped>
+/* LỚP OVERLAY TOÀN MÀN HÌNH - BẬT POINTER EVENTS */
 .tools-modal-overlay {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(2, 6, 23, 0.75);
+  width: 100vw;
+  height: 100vh;
+  background: rgba(15, 23, 42, 0.55);
   backdrop-filter: blur(8px);
-  z-index: 999999;
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 100000;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 20px;
-  animation: modalFadeIn 0.25s ease-out;
+  padding: 24px;
+  pointer-events: auto !important;
+  cursor: default;
+  animation: toolsModalFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  box-sizing: border-box;
 }
 
+/* KHUNG MODAL PHONG CÁCH SÁNG ĐỒNG BỘ VỚI CHATBOT WIDGET */
 .tools-modal-container {
   width: 100%;
-  max-width: 780px;
-  max-height: 88vh;
-  background: #090d16;
-  border: 1px solid rgba(0, 240, 255, 0.25);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.6), 0 0 32px rgba(0, 240, 255, 0.12);
-  border-radius: 16px;
+  max-width: 760px;
+  max-height: 86vh;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 20px 50px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(226, 232, 240, 0.8);
+  border-radius: 14px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  color: #f1f5f9;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  color: #0f172a;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  pointer-events: auto !important;
+  user-select: text;
 }
 
+/* HEADER CỬA SỔ */
 .tools-modal-header {
   padding: 16px 20px;
-  background: rgba(15, 23, 42, 0.85);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #ffffff;
+  border-bottom: 1px solid #f1f5f9;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  pointer-events: auto !important;
 }
 
 .header-title-box {
@@ -340,28 +357,29 @@ export default {
 }
 
 .header-icon {
-  width: 36px;
-  height: 36px;
+  width: 38px;
+  height: 38px;
   border-radius: 10px;
-  background: rgba(0, 240, 255, 0.1);
-  border: 1px solid rgba(0, 240, 255, 0.3);
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
   display: flex;
   align-items: center;
   justify-content: center;
+  color: #0284c7;
 }
 
 .header-title-box h3 {
   font-size: 16px;
   font-weight: 700;
   margin: 0;
-  color: #ffffff;
-  letter-spacing: 0.3px;
+  color: #0f172a;
+  letter-spacing: -0.2px;
 }
 
 .header-subtitle {
   font-size: 12px;
-  color: #94a3b8;
-  margin: 2px 0 0 0;
+  color: #64748b;
+  margin: 3px 0 0 0;
 }
 
 .header-btn-group {
@@ -371,13 +389,14 @@ export default {
 }
 
 .btn-refresh, .btn-close {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #94a3b8;
-  width: 30px;
-  height: 30px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+  width: 32px;
+  height: 32px;
   border-radius: 8px;
-  cursor: pointer;
+  cursor: pointer !important;
+  pointer-events: auto !important;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -385,32 +404,35 @@ export default {
 }
 
 .btn-refresh:hover, .btn-close:hover {
-  background: rgba(0, 240, 255, 0.15);
-  color: #00f0ff;
-  border-color: rgba(0, 240, 255, 0.4);
+  background: #f1f5f9;
+  color: #0284c7;
+  border-color: #cbd5e1;
 }
 
 .spinning {
-  animation: spin 1s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
+/* BODY */
 .tools-modal-body {
   padding: 20px;
   overflow-y: auto;
   flex: 1;
+  background: #f8fafc;
+  pointer-events: auto !important;
 }
 
 .tools-loading, .tools-empty {
   text-align: center;
   padding: 40px 20px;
-  color: #94a3b8;
+  color: #64748b;
 }
 
 .spinner {
   width: 28px;
   height: 28px;
-  border: 3px solid rgba(0, 240, 255, 0.2);
-  border-top-color: #00f0ff;
+  border: 3px solid #e2e8f0;
+  border-top-color: #0284c7;
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin: 0 auto 12px auto;
@@ -419,24 +441,28 @@ export default {
 .tools-grid {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
 }
 
+/* THẺ CÔNG CỤ (TOOL CARD) */
 .tool-card {
-  background: rgba(15, 23, 42, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
   border-radius: 12px;
   padding: 16px;
-  transition: border-color 0.2s;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.04);
+  transition: all 0.2s ease;
+  pointer-events: auto !important;
 }
 
 .tool-card:hover {
-  border-color: rgba(0, 240, 255, 0.3);
+  border-color: #93c5fd;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
 }
 
 .tool-card.disabled {
   opacity: 0.65;
-  background: rgba(15, 23, 42, 0.3);
+  background: #f8fafc;
 }
 
 .tool-card-top {
@@ -461,111 +487,119 @@ export default {
 }
 
 .type-static_markdown {
-  background: rgba(16, 185, 129, 0.15);
-  color: #10b981;
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: #ecfdf5;
+  color: #059669;
+  border: 1px solid #a7f3d0;
 }
 
 .type-sql_query {
-  background: rgba(59, 130, 246, 0.15);
-  color: #60a5fa;
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  background: #eff6ff;
+  color: #2563eb;
+  border: 1px solid #bfdbfe;
 }
 
 .type-qdrant_vector {
-  background: rgba(168, 85, 247, 0.15);
-  color: #c084fc;
-  border: 1px solid rgba(168, 85, 247, 0.3);
+  background: #faf5ff;
+  color: #9333ea;
+  border: 1px solid #e9d5ff;
 }
 
 .type-http_api {
-  background: rgba(245, 158, 11, 0.15);
-  color: #fbbf24;
-  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: #fffbeb;
+  color: #d97706;
+  border: 1px solid #fde68a;
 }
 
 .tool-name {
-  font-weight: 600;
+  font-weight: 700;
   font-size: 14px;
-  color: #ffffff;
-  font-family: monospace;
+  color: #0f172a;
+  font-family: Consolas, Monaco, monospace;
 }
 
-/* Switch Toggle */
+/* SWITCH TOGGLE */
 .switch {
   position: relative;
   display: inline-block;
-  width: 36px;
-  height: 20px;
+  width: 38px;
+  height: 22px;
+  cursor: pointer !important;
+  pointer-events: auto !important;
 }
 
 .switch input {
   opacity: 0;
   width: 0;
   height: 0;
+  pointer-events: auto !important;
 }
 
 .slider {
   position: absolute;
-  cursor: pointer;
+  cursor: pointer !important;
+  pointer-events: auto !important;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #334155;
-  transition: 0.3s;
+  background-color: #cbd5e1;
+  transition: 0.25s;
   border-radius: 20px;
 }
 
 .slider:before {
   position: absolute;
   content: "";
-  height: 14px;
-  width: 14px;
+  height: 16px;
+  width: 16px;
   left: 3px;
   bottom: 3px;
   background-color: white;
-  transition: 0.3s;
+  transition: 0.25s;
   border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 input:checked + .slider {
-  background-color: #00f0ff;
-  box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+  background-color: #0284c7;
 }
 
 input:checked + .slider:before {
   transform: translateX(16px);
-  background-color: #020617;
 }
 
 .tool-desc {
   font-size: 13px;
-  color: #94a3b8;
+  color: #475569;
   line-height: 1.5;
   margin: 0 0 12px 0;
 }
 
-/* Section Detail Collapsible */
+/* SECTION DETAIL COLLAPSIBLE */
 .tool-detail-section {
   margin-top: 8px;
-  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-top: 1px solid #f1f5f9;
   padding-top: 8px;
 }
 
 .detail-header {
   font-size: 12px;
   color: #64748b;
-  cursor: pointer;
+  cursor: pointer !important;
+  pointer-events: auto !important;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 4px 0;
+  padding: 6px 8px;
+  border-radius: 6px;
   user-select: none;
+  background: #f8fafc;
+  transition: all 0.15s;
 }
 
 .detail-header:hover {
-  color: #94a3b8;
+  color: #0f172a;
+  background: #f1f5f9;
 }
 
 .detail-header .arrow {
@@ -585,155 +619,185 @@ input:checked + .slider:before {
 }
 
 .detail-block {
-  background: #040810;
-  border-radius: 6px;
-  padding: 8px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: #0f172a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  border: 1px solid #1e293b;
 }
 
 .detail-label {
   font-size: 11px;
-  color: #00f0ff;
-  margin-bottom: 4px;
+  font-weight: 600;
+  color: #38bdf8;
+  margin-bottom: 5px;
 }
 
 pre {
   margin: 0;
   font-size: 11px;
-  color: #cbd5e1;
+  color: #f1f5f9;
   white-space: pre-wrap;
   word-break: break-all;
-  font-family: Consolas, monospace;
+  font-family: Consolas, Monaco, monospace;
 }
 
-/* Test Section */
+/* TEST SECTION */
 .tool-test-section {
   margin-top: 10px;
 }
 
 .btn-test-toggle {
-  background: rgba(0, 240, 255, 0.08);
-  border: 1px solid rgba(0, 240, 255, 0.2);
-  color: #00f0ff;
+  background: #f0f9ff;
+  border: 1px solid #bae6fd;
+  color: #0284c7;
   border-radius: 6px;
   font-size: 12px;
-  padding: 5px 12px;
-  cursor: pointer;
+  padding: 6px 12px;
+  cursor: pointer !important;
+  pointer-events: auto !important;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-weight: 500;
+  font-weight: 600;
   transition: all 0.2s;
 }
 
 .btn-test-toggle:hover {
-  background: rgba(0, 240, 255, 0.18);
-  border-color: rgba(0, 240, 255, 0.4);
+  background: #e0f2fe;
+  border-color: #7dd3fc;
 }
 
 .test-panel {
   margin-top: 10px;
-  background: #040810;
-  border: 1px solid rgba(0, 240, 255, 0.2);
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.05);
   border-radius: 8px;
   padding: 12px;
+  pointer-events: auto !important;
 }
 
 .test-input-row label {
   display: block;
-  font-size: 11px;
-  color: #94a3b8;
-  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #334155;
+  margin-bottom: 5px;
 }
 
 .test-input-row textarea {
   width: 100%;
-  background: #090d16;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #f1f5f9;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #0f172a;
   border-radius: 6px;
   padding: 8px;
-  font-family: Consolas, monospace;
+  font-family: Consolas, Monaco, monospace;
   font-size: 12px;
   resize: vertical;
   outline: none;
+  pointer-events: auto !important;
+  box-sizing: border-box;
 }
 
 .test-input-row textarea:focus {
-  border-color: #00f0ff;
+  border-color: #0284c7;
+  box-shadow: 0 0 0 2px rgba(2, 132, 199, 0.15);
 }
 
 .test-actions {
   display: flex;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 10px;
 }
 
 .btn-run {
-  background: #00f0ff;
-  color: #020617;
+  background: #0284c7;
+  color: #ffffff;
   border: none;
   font-weight: 600;
   font-size: 12px;
-  padding: 6px 14px;
+  padding: 7px 16px;
   border-radius: 6px;
-  cursor: pointer;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  transition: background 0.2s;
+}
+
+.btn-run:hover:not(:disabled) {
+  background: #0369a1;
 }
 
 .btn-run:disabled {
   opacity: 0.6;
-  cursor: not-allowed;
+  cursor: not-allowed !important;
 }
 
 .btn-cancel {
-  background: rgba(255, 255, 255, 0.08);
-  color: #cbd5e1;
-  border: none;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #475569;
   font-size: 12px;
-  padding: 6px 12px;
+  padding: 7px 12px;
   border-radius: 6px;
-  cursor: pointer;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+}
+
+.btn-cancel:hover {
+  background: #e2e8f0;
 }
 
 .test-result-box {
   margin-top: 10px;
-  background: rgba(16, 185, 129, 0.05);
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
   border-radius: 6px;
   padding: 10px;
+  color: #166534;
 }
 
 .test-result-box.error {
-  background: rgba(239, 68, 68, 0.05);
-  border-color: rgba(239, 68, 68, 0.3);
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #991b1b;
 }
 
 .result-header {
   display: flex;
   justify-content: space-between;
   font-size: 11px;
-  color: #94a3b8;
+  font-weight: 600;
+  color: #64748b;
   margin-bottom: 6px;
 }
 
 .status-ok {
-  color: #10b981;
-  font-weight: 600;
+  color: #15803d;
+  font-weight: 700;
 }
 
 .status-err {
-  color: #ef4444;
-  font-weight: 600;
+  color: #dc2626;
+  font-weight: 700;
 }
 
-/* Modal Footer */
+.test-result-box pre {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: inherit;
+}
+
+/* MODAL FOOTER */
 .tools-modal-footer {
-  padding: 12px 20px;
-  background: rgba(15, 23, 42, 0.9);
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 14px 20px;
+  background: #ffffff;
+  border-top: 1px solid #f1f5f9;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  pointer-events: auto !important;
 }
 
 .footer-info {
@@ -742,6 +806,7 @@ pre {
   gap: 8px;
   font-size: 12px;
   color: #64748b;
+  font-weight: 500;
 }
 
 .dot-active {
@@ -749,25 +814,28 @@ pre {
   height: 8px;
   border-radius: 50%;
   background: #10b981;
-  box-shadow: 0 0 8px #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
 }
 
 .btn-modal-close {
-  background: rgba(255, 255, 255, 0.1);
-  color: #f1f5f9;
-  border: none;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  color: #334155;
   border-radius: 6px;
-  padding: 6px 16px;
+  padding: 7px 18px;
   font-size: 13px;
-  cursor: pointer;
+  font-weight: 600;
+  cursor: pointer !important;
+  pointer-events: auto !important;
   transition: all 0.2s;
 }
 
 .btn-modal-close:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: #e2e8f0;
+  color: #0f172a;
 }
 
-@keyframes modalFadeIn {
+@keyframes toolsModalFadeIn {
   from {
     opacity: 0;
     transform: scale(0.96);
