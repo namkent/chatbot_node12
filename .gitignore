@@ -26,6 +26,4 @@ temp/
 *.tar.gz
 *.rar
 
-# MinIO binaries and local storage data
-minio/*.exe
-minio/data/
+
