@@ -240,7 +240,7 @@ export default {
         { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', desc: 'Lý luận sâu, toán học & code', badge: 'Reasoning', badgeType: 'badge-reasoning', supportsThinking: true },
         { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B', desc: 'Đa phương thức, hiểu ảnh & tiếng Việt', badge: 'Vision', badgeType: 'badge-vision', supportsThinking: false },
         { id: 'qwen/qwen3.6-27b', name: 'Qwen 3.6 27B', desc: 'Nhận diện ảnh nhanh, siêu tốc', badge: 'Vision', badgeType: 'badge-vision', supportsThinking: false },
-        { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B', desc: 'Gọn nhẹ, tốc độ phản hồi cao', badge: 'Fast', badgeType: 'badge-fast', supportsThinking: false }
+        { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B', desc: 'Suy luận nhanh, tốc độ phản hồi cao', badge: 'Reasoning', badgeType: 'badge-reasoning', supportsThinking: true }
       ]
     }
   },
@@ -333,11 +333,16 @@ export default {
     },
     isCurrentModelSupportThinking() {
       const found = this.modelListOptions.find(m => m.id === this.effectiveModel);
-      if (!found) return false;
+      if (!found) {
+        return /gpt-oss|120b|20b|deepseek-r1|reasoning|r1/i.test(this.effectiveModel);
+      }
+      if (/gpt-oss-20b|gpt-oss-120b|deepseek-r1/i.test(found.id)) {
+        return true;
+      }
       if (typeof found.supportsThinking === 'boolean') {
         return found.supportsThinking;
       }
-      return (found.badge === 'Reasoning' || /120b|deepseek-r1|reasoning/i.test(found.id));
+      return (found.badge === 'Reasoning' || /gpt-oss|120b|20b|deepseek-r1|reasoning|r1/i.test(found.id));
     },
     thinkingTooltip() {
       if (!this.isCurrentModelSupportThinking) {
@@ -437,6 +442,9 @@ export default {
     selectModel(modelId) {
       this.effectiveModel = modelId;
       this.showModelDropdown = false;
+      if (this.isCurrentModelSupportThinking && this.thinking && !this.isThinkingActive) {
+        this.isThinkingActive = true;
+      }
       this.$emit('model-change', modelId);
       this.saveToLocalStorage();
     },
