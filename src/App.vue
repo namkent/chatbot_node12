@@ -1,47 +1,83 @@
 <template>
   <div id="app">
-    <div class="demo-page">
+    <!-- TOP NAVIGATION BAR -->
+    <header class="app-global-nav">
+      <div class="nav-brand">
+        <span class="brand-rocket">🚀</span>
+        <span class="brand-title">ASTRONAUT <strong>AI STUDIO</strong></span>
+        <span class="brand-tag">SPRING BOOT + H2DB</span>
+      </div>
+
+      <div class="nav-mode-switcher">
+        <button
+          :class="['btn-mode', { active: currentView === 'chat' }]"
+          @click="currentView = 'chat'"
+        >
+          <span>💬 Trải Nghiệm Chat</span>
+        </button>
+        <button
+          :class="['btn-mode', { active: currentView === 'studio' }]"
+          @click="currentView = 'studio'"
+        >
+          <span>⚡ Studio Quản Trị (Mini Dify)</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- VIEW 1: TRẢI NGHIỆM CHATBOT -->
+    <div v-if="currentView === 'chat'" class="demo-page">
       <div class="hero-section">
-        <div class="badge">VUE 2 + VITE • GROQ LPU</div>
+        <div class="badge">VUE 2 + VITE • GROQ LPU • DYNAMIC TOOLS</div>
         <h1 class="title">Astronaut Neon Bot</h1>
         <p class="subtitle">
-          Widget Chatbot AI phi hành gia không gian tích hợp <strong>Groq LPU siêu tốc</strong> (Qwen 3.8 27B),
-          hỗ trợ <strong>Streaming thời gian thực</strong>, <strong>Markdown</strong> và <strong>Highlight code</strong>.
+          Hệ thống AI Agent phi hành gia thông minh kết hợp <strong>Backend Java Spring Boot</strong>,
+          <strong>H2 Database</strong>, hỗ trợ <strong>Dynamic Tool Calling</strong>, <strong>Kho Tri Thức</strong> và <strong>Streaming Markdown</strong>.
         </p>
         <div class="instructions-card">
           <h3>📌 Tính năng mới & Hướng dẫn:</h3>
           <ul>
             <li>⚡ <strong>Tốc độ phản hồi tức thì với Groq LPU</strong>: Hàng trăm token mỗi giây, gần như không có độ trễ!</li>
-            <li>💻 <strong>Highlight cú pháp Code</strong>: Tự động phát hiện ngôn ngữ, tô màu cú pháp và có sẵn nút <strong>Copy</strong> tiện lợi.</li>
-            <li>📝 <strong>Định dạng Markdown</strong>: Hỗ trợ tiêu đề, in đậm/nghiêng, danh sách, trích dẫn và bảng biểu.</li>
-            <li>📊 <strong>Biểu đồ Mermaid trực quan</strong>: Tự động vẽ lưu đồ (flowchart), sơ đồ tuần tự (sequence), Gantt, Pie chart, Mindmap kèm nút xem mã nguồn & sao chép.</li>
-            <li>⏹️ <strong>Nút Dừng (Stop)</strong>: Cho phép ngắt luồng streaming bất kỳ lúc nào.</li>
-            <li>✨ <em>Gợi ý thử nghiệm:</em> Gõ <code>Vẽ sơ đồ quy trình đăng nhập bằng Mermaid</code> hoặc <code>Viết hàm QuickSort Python</code>!</li>
+            <li>🛠️ <strong>Dynamic Tool Calling (mini Dify)</strong>: Tự động truy vấn thực đơn Canteen, chạy SQL H2 Database lấy thời tiết, và tìm kiếm ngữ nghĩa Vector.</li>
+            <li>📚 <strong>Studio Quản Trị Tri Thức</strong>: Bấm nút <code>⚡ Studio Quản Trị</code> trên thanh menu để nạp tài liệu và cấu hình công cụ!</li>
+            <li>📊 <strong>Biểu đồ Mermaid trực quan</strong>: Tự động vẽ lưu đồ (flowchart), sơ đồ tuần tự (sequence), Gantt, Pie chart, Mindmap.</li>
+            <li>✨ <em>Gợi ý thử nghiệm:</em> Gõ <code>Hôm nay Canteen có món gì?</code> hoặc <code>Thời tiết ở Hà Nội hôm nay thế nào?</code>!</li>
           </ul>
         </div>
       </div>
-
-      <!-- Chatbot Component -->
-      <UrChatbot
-        bot-name="Astro Bot AI"
-        status-text="Groq • GPT-OSS 120B (Reasoning)"
-        placeholder-text="Hỏi giải thuật, code, kiến thức..."
-        :local-storage="true"
-        :attach-file="true"
-        :store-file="false"
-        :thinking="true"
-      />
     </div>
+
+    <!-- VIEW 2: STUDIO QUẢN TRỊ (MINI DIFY) -->
+    <div v-else-if="currentView === 'studio'" class="studio-view-wrapper">
+      <StudioDashboard @switch-view="currentView = $event" />
+    </div>
+
+    <!-- WIDGET CHATBOT LUÔN HOẠT ĐỘNG SẴN SÀNG Ở CẢ 2 CHẾ ĐỘ -->
+    <UrChatbot
+      bot-name="Astro Bot AI"
+      status-text="Groq • GPT-OSS 120B (Reasoning)"
+      placeholder-text="Hỏi giải thuật, thực đơn, thời tiết, luật..."
+      :local-storage="true"
+      :attach-file="true"
+      :store-file="false"
+      :thinking="true"
+    />
   </div>
 </template>
 
 <script>
 import UrChatbot from './components/UrChatbot.vue';
+import StudioDashboard from './components/StudioDashboard.vue';
 
 export default {
   name: 'App',
   components: {
-    UrChatbot
+    UrChatbot,
+    StudioDashboard
+  },
+  data() {
+    return {
+      currentView: 'chat' // 'chat' | 'studio'
+    };
   }
 };
 </script>
@@ -62,8 +98,89 @@ body {
   overflow-x: hidden;
 }
 
+/* TOPBAR */
+.app-global-nav {
+  height: 56px;
+  background: rgba(15, 23, 42, 0.85);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+.nav-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-rocket {
+  font-size: 20px;
+}
+
+.brand-title {
+  font-size: 14px;
+  letter-spacing: 1px;
+  color: #f1f5f9;
+}
+
+.brand-title strong {
+  color: #00f0ff;
+}
+
+.brand-tag {
+  font-size: 10px;
+  background: rgba(0, 240, 255, 0.12);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  color: #00f0ff;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 700;
+}
+
+.nav-mode-switcher {
+  display: flex;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.btn-mode {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-mode:hover {
+  color: #ffffff;
+}
+
+.btn-mode.active {
+  background: rgba(0, 240, 255, 0.15);
+  color: #00f0ff;
+  border: 1px solid rgba(0, 240, 255, 0.4);
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+}
+
+.studio-view-wrapper {
+  min-height: calc(100vh - 56px);
+}
+
 .demo-page {
-  min-height: 100vh;
+  min-height: calc(100vh - 56px);
   display: flex;
   flex-direction: column;
   justify-content: center;

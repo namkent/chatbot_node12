@@ -22,11 +22,16 @@ public class DynamicToolExecutor {
     private final SqlGuardrailService sqlGuardrail;
     private final ObjectMapper objectMapper;
     private final OkHttpClient httpClient;
+    private final SemanticSearchService semanticSearchService;
 
-    public DynamicToolExecutor(JdbcTemplate jdbcTemplate, SqlGuardrailService sqlGuardrail, ObjectMapper objectMapper) {
+    public DynamicToolExecutor(JdbcTemplate jdbcTemplate,
+                               SqlGuardrailService sqlGuardrail,
+                               ObjectMapper objectMapper,
+                               SemanticSearchService semanticSearchService) {
         this.jdbcTemplate = jdbcTemplate;
         this.sqlGuardrail = sqlGuardrail;
         this.objectMapper = objectMapper;
+        this.semanticSearchService = semanticSearchService;
         this.httpClient = new OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(15, TimeUnit.SECONDS)
@@ -123,11 +128,23 @@ public class DynamicToolExecutor {
             query = arguments.get("keyword").toString();
         }
 
-        // Đọc cấu hình Qdrant từ configData
+        // Đọc cấu hình Qdrant hoặc Knowledge Base từ configData
         String endpoint = "http://localhost:6333";
         String collection = "knowledge_base";
         try {
             JsonNode config = objectMapper.readTree(tool.getConfigData());
+            if (config.hasNonNull("knowledgeBaseId")) {
+                Long kbId = config.get("knowledgeBaseId").asLong();
+                List<com.chatbot.dto.SearchResultDto> results = semanticSearchService.search(kbId, query, 3);
+                if (!results.isEmpty()) {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("### [Dữ liệu trích xuất từ Kho Tri Thức]:\n");
+                    for (com.chatbot.dto.SearchResultDto r : results) {
+                        sb.append("- ").append(r.getContent().trim()).append("\n");
+                    }
+                    return sb.toString();
+                }
+            }
             if (config.hasNonNull("endpoint")) endpoint = config.get("endpoint").asText();
             if (config.hasNonNull("collection")) collection = config.get("collection").asText();
         } catch (Exception ignored) {}
