@@ -72,6 +72,19 @@
         pointer-events: none !important;
       }
 
+      // Zero-G bot bên trong vẫn hiển thị dù topbar-bot bị ẩn
+      .ur-chatbot-zerog-bot {
+        .ur-chatbot-topbar-bot,
+        .bottom-topbar-bot {
+          opacity: 1 !important;
+          visibility: visible !important;
+          pointer-events: auto !important;
+          position: static;
+          width: 100%;
+          height: 100%;
+        }
+      }
+
       .ur-chatbot-body,
       .chat-body {
         padding-left: 16px;

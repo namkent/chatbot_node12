@@ -51,7 +51,7 @@
         >{{ msg.text }}</div>
 
         <!-- Nút Chevron Thu gọn / Mở rộng nếu nội dung dài hơn 3 dòng -->
-        <div v-if="isMsgCollapsible(msg)" class="ur-chatbot-user-expand-row">
+        <div v-if="isMsgCollapsible(msg)" :class="['ur-chatbot-user-expand-row', { 'is-expanded': isMsgExpanded(msg) }]">
           <button
             type="button"
             class="ur-chatbot-btn-user-expand"
