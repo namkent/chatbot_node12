@@ -8,18 +8,30 @@
         <span class="brand-tag">SPRING BOOT + H2DB</span>
       </div>
 
-      <div class="nav-mode-switcher">
+      <div class="nav-right-section">
+        <div class="nav-mode-switcher">
+          <button
+            :class="['btn-mode', { active: currentView === 'chat' }]"
+            @click="currentView = 'chat'"
+          >
+            <span>💬 Trải Nghiệm Chat</span>
+          </button>
+          <button
+            :class="['btn-mode', { active: currentView === 'studio' }]"
+            @click="currentView = 'studio'"
+          >
+            <span>⚡ Studio Quản Trị (Mini Dify)</span>
+          </button>
+        </div>
+
+        <!-- NÚT QUẢN LÝ CÔNG CỤ DÀNH CHO ADMIN (TÁCH KHỎI CHATBOT) -->
         <button
-          :class="['btn-mode', { active: currentView === 'chat' }]"
-          @click="currentView = 'chat'"
+          class="btn-nav-tools"
+          title="Quản lý & Cấu hình Công cụ Agent (Dành riêng cho Quản trị viên)"
+          @click="isToolsModalOpen = true"
         >
-          <span>💬 Trải Nghiệm Chat</span>
-        </button>
-        <button
-          :class="['btn-mode', { active: currentView === 'studio' }]"
-          @click="currentView = 'studio'"
-        >
-          <span>⚡ Studio Quản Trị (Mini Dify)</span>
+          <span class="btn-icon">🛠️</span>
+          <span>Cấu Hình Tools</span>
         </button>
       </div>
     </header>
@@ -33,11 +45,25 @@
           Hệ thống AI Agent phi hành gia thông minh kết hợp <strong>Backend Java Spring Boot</strong>,
           <strong>H2 Database</strong>, hỗ trợ <strong>Dynamic Tool Calling</strong>, <strong>Kho Tri Thức</strong> và <strong>Streaming Markdown</strong>.
         </p>
+
+        <!-- CÁC NÚT ĐIỀU HƯỚNG QUẢN TRỊ TRÊN MÀN HÌNH CHÍNH -->
+        <div class="hero-action-buttons">
+          <button class="btn-hero-action primary" @click="isToolsModalOpen = true">
+            <span class="action-icon">🛠️</span>
+            <span>Cấu Hình Công Cụ Agent (Popup)</span>
+          </button>
+          <button class="btn-hero-action secondary" @click="currentView = 'studio'">
+            <span class="action-icon">⚡</span>
+            <span>Studio Quản Trị Tri Thức (Mini Dify)</span>
+          </button>
+        </div>
+
         <div class="instructions-card">
           <h3>📌 Tính năng mới & Hướng dẫn:</h3>
           <ul>
             <li>⚡ <strong>Tốc độ phản hồi tức thì với Groq LPU</strong>: Hàng trăm token mỗi giây, gần như không có độ trễ!</li>
             <li>🛠️ <strong>Dynamic Tool Calling (mini Dify)</strong>: Tự động truy vấn thực đơn Canteen, chạy SQL H2 Database lấy thời tiết, và tìm kiếm ngữ nghĩa Vector.</li>
+            <li>🔒 <strong>Phân quyền Quản trị & Người dùng</strong>: Nút cấu hình Tools đã được chuyển hẳn ra khỏi Chatbot widget (tránh người dùng cuối tự ý can thiệp).</li>
             <li>📚 <strong>Studio Quản Trị Tri Thức</strong>: Bấm nút <code>⚡ Studio Quản Trị</code> trên thanh menu để nạp tài liệu và cấu hình công cụ!</li>
             <li>📊 <strong>Biểu đồ Mermaid trực quan</strong>: Tự động vẽ lưu đồ (flowchart), sơ đồ tuần tự (sequence), Gantt, Pie chart, Mindmap.</li>
             <li>✨ <em>Gợi ý thử nghiệm:</em> Gõ <code>Hôm nay Canteen có món gì?</code> hoặc <code>Thời tiết ở Hà Nội hôm nay thế nào?</code>!</li>
@@ -61,22 +87,28 @@
       :store-file="false"
       :thinking="true"
     />
+
+    <!-- MODAL QUẢN LÝ TOOLS AGENT (ĐẶT Ở CẤP ROOT DÀNH CHO ADMIN) -->
+    <ToolsModal :visible="isToolsModalOpen" @close="isToolsModalOpen = false" />
   </div>
 </template>
 
 <script>
 import UrChatbot from './components/UrChatbot.vue';
 import StudioDashboard from './components/StudioDashboard.vue';
+import ToolsModal from './components/ToolsModal.vue';
 
 export default {
   name: 'App',
   components: {
     UrChatbot,
-    StudioDashboard
+    StudioDashboard,
+    ToolsModal
   },
   data() {
     return {
-      currentView: 'chat' // 'chat' | 'studio'
+      currentView: 'chat', // 'chat' | 'studio'
+      isToolsModalOpen: false
     };
   }
 };
@@ -175,6 +207,39 @@ body {
   box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
 }
 
+.nav-right-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-nav-tools {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(2, 132, 199, 0.15);
+  border: 1px solid rgba(2, 132, 199, 0.4);
+  color: #38bdf8;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.btn-nav-tools:hover {
+  background: rgba(2, 132, 199, 0.3);
+  border-color: #38bdf8;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(56, 189, 248, 0.35);
+  transform: translateY(-1px);
+}
+
+.btn-nav-tools .btn-icon {
+  font-size: 13px;
+}
+
 .studio-view-wrapper {
   min-height: calc(100vh - 56px);
 }
@@ -222,7 +287,56 @@ body {
   font-size: 16px;
   line-height: 1.6;
   color: #94a3b8;
-  margin-bottom: 32px;
+  margin-bottom: 24px;
+}
+
+/* HERO ADMIN ACTIONS */
+.hero-action-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+
+.btn-hero-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.btn-hero-action.primary {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  color: #ffffff;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  box-shadow: 0 4px 14px rgba(2, 132, 199, 0.3);
+}
+
+.btn-hero-action.primary:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #0284c7 100%);
+  border-color: #38bdf8;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(56, 189, 248, 0.45);
+}
+
+.btn-hero-action.secondary {
+  background: rgba(255, 255, 255, 0.05);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+}
+
+.btn-hero-action.secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #00f0ff;
+  border-color: rgba(0, 240, 255, 0.3);
+  transform: translateY(-2px);
 }
 
 .instructions-card {

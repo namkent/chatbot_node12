@@ -228,17 +228,6 @@
           </span>
         </div>
         <div class="ur-chatbot-header-actions header-actions">
-          <!-- Nút Quản lý Công cụ Agent -->
-          <button
-            class="ur-chatbot-btn-header-action btn-header-action"
-            title="Quản lý Công cụ Agent (Tools Manager)"
-            @click="isToolsModalOpen = true"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="3"></circle>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-            </svg>
-          </button>
 
           <!-- Nút Làm mới / Reset cuộc trò chuyện -->
           <button
@@ -1300,14 +1289,10 @@
         </div>
       </div>
     </transition>
-
-    <!-- Modal Quản lý Tools Agent -->
-    <ToolsModal :visible="isToolsModalOpen" @close="isToolsModalOpen = false" />
   </div>
 </template>
 
 <script>
-import ToolsModal from './ToolsModal.vue';
 import MarkdownIt from 'markdown-it';
 import markdownItTaskLists from 'markdown-it-task-lists';
 import hljs from 'highlight.js';
@@ -1800,9 +1785,6 @@ function detectLanguage(text) {
 
 export default {
   name: 'UrChatbot',
-  components: {
-    ToolsModal
-  },
   props: {
     botName: {
       type: String,
@@ -1902,7 +1884,6 @@ export default {
       },
       isExpanded: false, // Mở rộng theo chiều ngang
       isFullscreen: false, // Chế độ toàn màn hình
-      isToolsModalOpen: false, // Modal quản lý Dynamic Tools Agent
       showResetConfirm: false, // Modal xác nhận làm mới cuộc trò chuyện
       userMsgExpandedMap: {}, // Map lưu trạng thái expand của từng tin nhắn user
       userMsgCollapsibleMap: {}, // Map lưu trạng thái có dài quá 3 dòng của từng tin nhắn user
