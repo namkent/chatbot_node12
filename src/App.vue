@@ -2,7 +2,7 @@
   <div id="app">
     <!-- TOP NAVIGATION BAR -->
     <header class="app-global-nav">
-      <div class="nav-brand">
+      <div class="nav-brand" @click="$router.push('/')" style="cursor: pointer;">
         <span class="brand-rocket">🚀</span>
         <span class="brand-title">ASTRONAUT <strong>AI STUDIO</strong></span>
         <span class="brand-tag">SPRING BOOT + H2DB</span>
@@ -10,18 +10,28 @@
 
       <div class="nav-right-section">
         <div class="nav-mode-switcher">
-          <button
-            :class="['btn-mode', { active: currentView === 'chat' }]"
-            @click="currentView = 'chat'"
+          <router-link
+            to="/"
+            exact
+            class="btn-mode"
+            exact-active-class="active"
           >
-            <span>💬 Trải Nghiệm Chat</span>
-          </button>
-          <button
-            :class="['btn-mode', { active: currentView === 'studio' }]"
-            @click="currentView = 'studio'"
+            <span>💬 Bot Widget</span>
+          </router-link>
+          <router-link
+            to="/chat"
+            class="btn-mode"
+            active-class="active"
           >
-            <span>⚡ Studio Quản Trị (Mini Dify)</span>
-          </button>
+            <span>✨ Assistant Chat</span>
+          </router-link>
+          <router-link
+            to="/studio"
+            class="btn-mode"
+            active-class="active"
+          >
+            <span>⚡ Studio Quản Trị</span>
+          </router-link>
         </div>
 
         <!-- NÚT QUẢN LÝ CÔNG CỤ DÀNH CHO ADMIN (TÁCH KHỎI CHATBOT) -->
@@ -36,57 +46,10 @@
       </div>
     </header>
 
-    <!-- VIEW 1: TRẢI NGHIỆM CHATBOT -->
-    <div v-if="currentView === 'chat'" class="demo-page">
-      <div class="hero-section">
-        <div class="badge">VUE 2 + VITE • GROQ LPU • DYNAMIC TOOLS</div>
-        <h1 class="title">Astronaut Neon Bot</h1>
-        <p class="subtitle">
-          Hệ thống AI Agent phi hành gia thông minh kết hợp <strong>Backend Java Spring Boot</strong>,
-          <strong>H2 Database</strong>, hỗ trợ <strong>Dynamic Tool Calling</strong>, <strong>Kho Tri Thức</strong> và <strong>Streaming Markdown</strong>.
-        </p>
-
-        <!-- CÁC NÚT ĐIỀU HƯỚNG QUẢN TRỊ TRÊN MÀN HÌNH CHÍNH -->
-        <div class="hero-action-buttons">
-          <button class="btn-hero-action primary" @click="isToolsModalOpen = true">
-            <span class="action-icon">🛠️</span>
-            <span>Cấu Hình Công Cụ Agent (Popup)</span>
-          </button>
-          <button class="btn-hero-action secondary" @click="currentView = 'studio'">
-            <span class="action-icon">⚡</span>
-            <span>Studio Quản Trị Tri Thức (Mini Dify)</span>
-          </button>
-        </div>
-
-        <div class="instructions-card">
-          <h3>📌 Tính năng mới & Hướng dẫn:</h3>
-          <ul>
-            <li>⚡ <strong>Tốc độ phản hồi tức thì với Groq LPU</strong>: Hàng trăm token mỗi giây, gần như không có độ trễ!</li>
-            <li>🛠️ <strong>Dynamic Tool Calling (mini Dify)</strong>: Tự động truy vấn thực đơn Canteen, chạy SQL H2 Database lấy thời tiết, và tìm kiếm ngữ nghĩa Vector.</li>
-            <li>🔒 <strong>Phân quyền Quản trị & Người dùng</strong>: Nút cấu hình Tools đã được chuyển hẳn ra khỏi Chatbot widget (tránh người dùng cuối tự ý can thiệp).</li>
-            <li>📚 <strong>Studio Quản Trị Tri Thức</strong>: Bấm nút <code>⚡ Studio Quản Trị</code> trên thanh menu để nạp tài liệu và cấu hình công cụ!</li>
-            <li>📊 <strong>Biểu đồ Mermaid trực quan</strong>: Tự động vẽ lưu đồ (flowchart), sơ đồ tuần tự (sequence), Gantt, Pie chart, Mindmap.</li>
-            <li>✨ <em>Gợi ý thử nghiệm:</em> Gõ <code>Hôm nay Canteen có món gì?</code> hoặc <code>Thời tiết ở Hà Nội hôm nay thế nào?</code>!</li>
-          </ul>
-        </div>
-      </div>
-    </div>
-
-    <!-- VIEW 2: STUDIO QUẢN TRỊ (MINI DIFY) -->
-    <div v-else-if="currentView === 'studio'" class="studio-view-wrapper">
-      <StudioDashboard @switch-view="currentView = $event" />
-    </div>
-
-    <!-- WIDGET CHATBOT LUÔN HOẠT ĐỘNG SẴN SÀNG Ở CẢ 2 CHẾ ĐỘ -->
-    <UrChatbot
-      bot-name="Astro Bot AI"
-      status-text="Groq • GPT-OSS 120B (Reasoning)"
-      placeholder-text="Hỏi giải thuật, thực đơn, thời tiết, luật..."
-      :local-storage="true"
-      :attach-file="true"
-      :store-file="false"
-      :thinking="true"
-    />
+    <!-- ROUTED VIEWS -->
+    <main class="app-router-content">
+      <router-view />
+    </main>
 
     <!-- MODAL QUẢN LÝ TOOLS AGENT (ĐẶT Ở CẤP ROOT DÀNH CHO ADMIN) -->
     <ToolsModal :visible="isToolsModalOpen" @close="isToolsModalOpen = false" />
@@ -94,20 +57,15 @@
 </template>
 
 <script>
-import UrChatbot from './components/UrChatbot.vue';
-import StudioDashboard from './components/StudioDashboard.vue';
 import ToolsModal from './components/ToolsModal.vue';
 
 export default {
   name: 'App',
   components: {
-    UrChatbot,
-    StudioDashboard,
     ToolsModal
   },
   data() {
     return {
-      currentView: 'chat', // 'chat' | 'studio'
       isToolsModalOpen: false
     };
   }
@@ -194,6 +152,9 @@ body {
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
 }
 
 .btn-mode:hover {
@@ -309,6 +270,7 @@ body {
   font-weight: 600;
   cursor: pointer;
   transition: all 0.25s ease;
+  text-decoration: none;
 }
 
 .btn-hero-action.primary {

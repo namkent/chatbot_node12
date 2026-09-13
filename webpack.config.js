@@ -10,7 +10,8 @@ module.exports = (env = {}, options = {}) => {
     entry: './src/main.js',
     output: {
       path: path.resolve(__dirname, 'dist'),
-      filename: 'bundle.[hash:8].js'
+      filename: 'bundle.[hash:8].js',
+      publicPath: '/'
     },
     resolve: {
       extensions: ['.js', '.vue', '.json', '.scss'],

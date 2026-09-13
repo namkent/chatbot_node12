@@ -363,6 +363,124 @@ const server = http.createServer(async function (req, res) {
       }
     }
 
+    // 3.5. Endpoint Tự động sinh Tiêu đề cuộc trò chuyện kèm Emoji: POST /api/chat/title
+    if (req.method === 'POST' && pathname === '/api/chat/title') {
+      const payload = await getRequestBody(req).catch(function () { return {}; });
+      let userText = '';
+      if (payload.content && typeof payload.content === 'string') {
+        userText = payload.content.trim();
+      } else if (Array.isArray(payload.messages) && payload.messages.length > 0) {
+        userText = payload.messages.map(function (m) { return m.role + ': ' + (m.content || ''); }).join('\n').trim();
+      }
+
+      function detectEmoji(text) {
+        const lower = (text || '').toLowerCase();
+        if (/code|python|java|bug|lỗi|html|css|sql|git/.test(lower)) return '💻';
+        if (/chào|hello|hi|alo/.test(lower)) return '👋';
+        if (/ảnh|image|hình|photo/.test(lower)) return '🖼️';
+        if (/tiền|giá|kinh doanh|bán|mua|finance/.test(lower)) return '💰';
+        if (/học|sách|nghiên cứu|giải thích|toán/.test(lower)) return '📚';
+        if (/nhạc|hát|bài hát|âm nhạc/.test(lower)) return '🎵';
+        if (/game|chơi/.test(lower)) return '🎮';
+        if (/sức khỏe|bệnh|thuốc|bác sĩ/.test(lower)) return '🏥';
+        if (/ăn|nấu|món|bếp/.test(lower)) return '🍳';
+        if (/du lịch|vé|khách sạn|bay/.test(lower)) return '✈️';
+        return '💬';
+      }
+
+      if (!userText) {
+        return sendJson(res, 200, { title: '💬 Cuộc trò chuyện mới', emoji: '💬' });
+      }
+
+      const model = (payload.model && typeof payload.model === 'string' && payload.model.trim())
+        ? payload.model.trim()
+        : DEFAULT_MODEL;
+
+      const prompt = 'Nhiệm vụ: Dựa vào nội dung hội thoại sau, hãy đặt đúng 1 tiêu đề thật ngắn gọn (từ 2 đến 5 từ tiếng Việt).\n' +
+        'QUY TẮC:\n' +
+        '1. BẮT BUỘC bắt đầu bằng ĐÚNG 1 emoji phù hợp nhất với chủ đề, theo sau là 1 khoảng trắng và tiêu đề.\n' +
+        '2. KHÔNG viết trong dấu ngoặc kép, KHÔNG giải thích, KHÔNG thêm tiền tố như "Tiêu đề:". Chỉ trả về đúng 1 dòng duy nhất gồm emoji và tiêu đề.\n' +
+        'Ví dụ:\n' +
+        '🐍 Lập trình Python\n' +
+        '🛒 Thiết kế Database E-Commerce\n' +
+        '🎨 Thiết kế Giao diện\n' +
+        '🚀 Kế hoạch Khởi nghiệp\n\n' +
+        'Nội dung hội thoại:\n' + userText.slice(0, 600);
+
+      try {
+        const reqPayload = {
+          model: model,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.3,
+          max_tokens: 40,
+          stream: false
+        };
+        const reqBodyStr = JSON.stringify(reqPayload);
+        const targetUrl = new url.URL(OPENAI_API_URL);
+        const isHttps = targetUrl.protocol === 'https:';
+        const client = isHttps ? https : http;
+
+        const reqHeaders = {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(reqBodyStr)
+        };
+        if (OPENAI_API_KEY) {
+          reqHeaders['Authorization'] = 'Bearer ' + OPENAI_API_KEY;
+        }
+
+        const upstreamReq = client.request({
+          hostname: targetUrl.hostname,
+          port: targetUrl.port || (isHttps ? 443 : 80),
+          path: targetUrl.pathname + (targetUrl.search || ''),
+          method: 'POST',
+          headers: reqHeaders,
+          timeout: 10000,
+          rejectUnauthorized: REJECT_UNAUTHORIZED
+        }, function (upstreamRes) {
+          let body = '';
+          upstreamRes.setEncoding('utf8');
+          upstreamRes.on('data', function (chunk) { body += chunk; });
+          upstreamRes.on('end', function () {
+            try {
+              const parsed = JSON.parse(body);
+              let rawTitle = (parsed.choices && parsed.choices[0] && parsed.choices[0].message && parsed.choices[0].message.content) || '';
+              rawTitle = rawTitle.replace(/["'\r\n`*#]/g, ' ').replace(/^(tiêu\s*đề|title|chủ\s*đề)[:\s-]+/i, '').trim();
+              if (rawTitle) {
+                const emojiMatch = rawTitle.match(/^(\p{Extended_Pictographic}|\p{Emoji_Presentation}|\uD83C[\uDF00-\uDFFF]|\uD83D[\uDC00-\uDE4F]|\uD83E[\uDD00-\uDDFF]|[\u2600-\u27BF])\s*(.*)$/u);
+                let emoji = '💬';
+                let finalTitle = rawTitle;
+                if (emojiMatch) {
+                  emoji = emojiMatch[1];
+                  finalTitle = emoji + ' ' + (emojiMatch[2].trim() || rawTitle);
+                } else {
+                  emoji = detectEmoji(rawTitle + ' ' + userText);
+                  finalTitle = emoji + ' ' + rawTitle;
+                }
+                return sendJson(res, 200, { title: finalTitle, emoji: emoji });
+              }
+            } catch (e) {}
+            const fallbackEmoji = detectEmoji(userText);
+            const snippet = userText.replace(/\s+/g, ' ').slice(0, 24);
+            return sendJson(res, 200, { title: fallbackEmoji + ' ' + snippet, emoji: fallbackEmoji });
+          });
+        });
+
+        upstreamReq.on('error', function () {
+          const fallbackEmoji = detectEmoji(userText);
+          const snippet = userText.replace(/\s+/g, ' ').slice(0, 24);
+          return sendJson(res, 200, { title: fallbackEmoji + ' ' + snippet, emoji: fallbackEmoji });
+        });
+
+        upstreamReq.write(reqBodyStr);
+        upstreamReq.end();
+      } catch (err) {
+        const fallbackEmoji = detectEmoji(userText);
+        const snippet = userText.replace(/\s+/g, ' ').slice(0, 24);
+        return sendJson(res, 200, { title: fallbackEmoji + ' ' + snippet, emoji: fallbackEmoji });
+      }
+      return;
+    }
+
     // 4. Endpoint Chat Proxy Streaming: POST /api/chat
     if (req.method === 'POST' && pathname === '/api/chat') {
       const payload = await getRequestBody(req);

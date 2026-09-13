@@ -3,6 +3,8 @@ package com.chatbot.service;
 import com.chatbot.config.AppProperties;
 import com.chatbot.dto.ChatRequest;
 import com.chatbot.dto.MessageDto;
+import com.chatbot.dto.TitleRequest;
+import com.chatbot.dto.TitleResponse;
 import com.chatbot.entity.DynamicToolEntity;
 import com.chatbot.repository.DynamicToolRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -649,6 +651,160 @@ public class AiChatService {
             node.put("__message__", message);
             sendSseData(writer, objectMapper.writeValueAsString(node));
         } catch (Exception ignored) {}
+    }
+
+    /**
+     * Tự động sinh tiêu đề cho phiên chat kèm 1 emoji ở đầu
+     */
+    public TitleResponse generateTitle(TitleRequest request) {
+        String userText = "";
+        if (request.getContent() != null && !request.getContent().trim().isEmpty()) {
+            userText = request.getContent().trim();
+        } else if (request.getMessages() != null && !request.getMessages().isEmpty()) {
+            StringBuilder sb = new StringBuilder();
+            for (MessageDto m : request.getMessages()) {
+                if (m.getContent() instanceof String) {
+                    String str = ((String) m.getContent()).trim();
+                    if (!str.isEmpty()) {
+                        sb.append(m.getRole()).append(": ").append(str).append("\n");
+                    }
+                }
+            }
+            userText = sb.toString().trim();
+        }
+
+        if (userText.isEmpty()) {
+            return new TitleResponse("💬 Cuộc trò chuyện mới", "💬");
+        }
+
+        if (userText.length() > 600) {
+            userText = userText.substring(0, 600);
+        }
+
+        List<String> candidates = buildCandidateModels(request.getModel());
+
+        String prompt = "Nhiệm vụ: Dựa vào nội dung hội thoại sau, hãy đặt đúng 1 tiêu đề thật ngắn gọn (từ 2 đến 5 từ tiếng Việt).\n" +
+                "QUY TẮC:\n" +
+                "1. BẮT BUỘC bắt đầu bằng ĐÚNG 1 emoji phù hợp nhất với chủ đề, theo sau là 1 khoảng trắng và tiêu đề.\n" +
+                "2. KHÔNG viết trong dấu ngoặc kép, KHÔNG giải thích, KHÔNG thêm tiền tố như 'Tiêu đề:'. Chỉ trả về đúng 1 dòng duy nhất gồm emoji và tiêu đề.\n" +
+                "Ví dụ:\n" +
+                "🐍 Lập trình Python\n" +
+                "🛒 Thiết kế Database E-Commerce\n" +
+                "🎨 Thiết kế Giao diện\n" +
+                "🚀 Kế hoạch Khởi nghiệp\n\n" +
+                "Nội dung hội thoại:\n" + userText;
+
+        for (String model : candidates) {
+            try {
+                ObjectNode payloadNode = objectMapper.createObjectNode();
+                payloadNode.put("model", model);
+                ArrayNode msgs = payloadNode.putArray("messages");
+                ObjectNode mNode = msgs.addObject();
+                mNode.put("role", "user");
+                mNode.put("content", prompt);
+                payloadNode.put("temperature", 0.3);
+                payloadNode.put("max_tokens", 40);
+                payloadNode.put("stream", false);
+
+                Request okRequest = createOkHttpRequest(payloadNode);
+                try (Response res = httpClient.newCall(okRequest).execute()) {
+                    if (res.isSuccessful() && res.body() != null) {
+                        String bodyStr = res.body().string();
+                        JsonNode root = objectMapper.readTree(bodyStr);
+                        JsonNode choices = root.get("choices");
+                        if (choices != null && choices.size() > 0) {
+                            JsonNode msg = choices.get(0).get("message");
+                            if (msg != null && msg.hasNonNull("content")) {
+                                String rawTitle = msg.get("content").asText().trim();
+                                TitleResponse tr = parseTitleResult(rawTitle, userText);
+                                if (tr != null) {
+                                    log.info("[Title Generation] Sinh tiêu đề thành công bằng model {}: {}", model, tr.getTitle());
+                                    return tr;
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("[Title Generation] Model {} sinh tiêu đề không thành công: {}", model, e.getMessage());
+            }
+        }
+
+        return fallbackTitleFromContent(userText);
+    }
+
+    private TitleResponse parseTitleResult(String rawTitle, String userText) {
+        if (rawTitle == null || rawTitle.trim().isEmpty()) {
+            return null;
+        }
+        String clean = rawTitle.replaceAll("[\"'\r\n`*#]", " ").trim();
+        clean = clean.replaceAll("^(?i)(tiêu\\s*đề|title|chủ\\s*đề)[:\\s-]+", "").trim();
+        if (clean.isEmpty()) return null;
+
+        // Kiểm tra xem ký tự đầu tiên có phải emoji không (xét surrogate pair hoặc symbol)
+        if (clean.length() >= 2 && Character.isSurrogatePair(clean.charAt(0), clean.charAt(1))) {
+            String emoji = clean.substring(0, 2);
+            String titlePart = clean.substring(2).trim();
+            if (!titlePart.isEmpty()) {
+                if (titlePart.length() > 36) titlePart = titlePart.substring(0, 36) + "...";
+                return new TitleResponse(emoji + " " + titlePart, emoji);
+            }
+        } else if (clean.length() >= 1 && (clean.charAt(0) >= 0x2600 && clean.charAt(0) <= 0x27BF)) {
+            String emoji = clean.substring(0, 1);
+            String titlePart = clean.substring(1).trim();
+            if (!titlePart.isEmpty()) {
+                if (titlePart.length() > 36) titlePart = titlePart.substring(0, 36) + "...";
+                return new TitleResponse(emoji + " " + titlePart, emoji);
+            }
+        }
+
+        String emoji = detectEmojiFromText(clean + " " + userText);
+        if (clean.length() > 36) clean = clean.substring(0, 36) + "...";
+        return new TitleResponse(emoji + " " + clean, emoji);
+    }
+
+    private String detectEmojiFromText(String text) {
+        String lower = text.toLowerCase();
+        if (lower.contains("code") || lower.contains("python") || lower.contains("java") || lower.contains("bug") || lower.contains("lỗi") || lower.contains("html") || lower.contains("css") || lower.contains("sql") || lower.contains("git")) {
+            return "💻";
+        }
+        if (lower.contains("chào") || lower.contains("hello") || lower.contains("hi") || lower.contains("alo")) {
+            return "👋";
+        }
+        if (lower.contains("ảnh") || lower.contains("image") || lower.contains("hình") || lower.contains("photo")) {
+            return "🖼️";
+        }
+        if (lower.contains("tiền") || lower.contains("giá") || lower.contains("kinh doanh") || lower.contains("bán") || lower.contains("mua") || lower.contains("finance")) {
+            return "💰";
+        }
+        if (lower.contains("học") || lower.contains("sách") || lower.contains("nghiên cứu") || lower.contains("giải thích") || lower.contains("toán")) {
+            return "📚";
+        }
+        if (lower.contains("nhạc") || lower.contains("hát") || lower.contains("bài hát") || lower.contains("âm nhạc")) {
+            return "🎵";
+        }
+        if (lower.contains("game") || lower.contains("chơi")) {
+            return "🎮";
+        }
+        if (lower.contains("sức khỏe") || lower.contains("bệnh") || lower.contains("thuốc") || lower.contains("bác sĩ")) {
+            return "🏥";
+        }
+        if (lower.contains("ăn") || lower.contains("nấu") || lower.contains("món") || lower.contains("bếp")) {
+            return "🍳";
+        }
+        if (lower.contains("du lịch") || lower.contains("vé") || lower.contains("khách sạn") || lower.contains("bay")) {
+            return "✈️";
+        }
+        return "💬";
+    }
+
+    private TitleResponse fallbackTitleFromContent(String text) {
+        String emoji = detectEmojiFromText(text);
+        String snippet = text.replaceAll("\\s+", " ").trim();
+        if (snippet.length() > 28) {
+            snippet = snippet.substring(0, 28) + "...";
+        }
+        return new TitleResponse(emoji + " " + snippet, emoji);
     }
 
     private void sendSseData(PrintWriter writer, String data) {

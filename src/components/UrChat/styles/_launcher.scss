@@ -1,0 +1,177 @@
+  /* ---------------------------------------------------------
+     10. NÚT TRIGGER WIDGET
+     --------------------------------------------------------- */
+  .ur-chatbot-trigger-btn,
+  .chat-trigger-btn {
+    position: relative;
+    width: 75px;
+    height: 75px;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    pointer-events: auto;
+    margin-top: 12px;
+    transition: opacity 0.3s ease,
+                transform 0.35s cubic-bezier(0.34, 1.25, 0.64, 1),
+                height 0.35s ease,
+                margin 0.35s ease;
+
+    &.is-hidden {
+      opacity: 0;
+      pointer-events: none;
+      transform: scale(0.4) translateY(20px);
+      height: 0;
+      margin-top: 0;
+      visibility: hidden;
+    }
+
+    &::after {
+      content: "";
+      position: absolute;
+      width: 66px;
+      height: 66px;
+      border-radius: 50%;
+      background: rgba(0, 240, 255, 0.25);
+      filter: blur(14px);
+      z-index: 1;
+      transition: all 0.5s ease;
+      animation: pulseAura 3s ease-in-out infinite;
+    }
+
+    &:hover::after {
+      width: 80px;
+      height: 80px;
+      background: rgba(0, 240, 255, 0.45);
+      filter: blur(18px);
+    }
+  }
+
+  .ur-chatbot-trigger-svg,
+  .trigger-svg {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    z-index: 2;
+    overflow: visible;
+  }
+
+  .state-chat-bubble,
+  .state-bot-cute {
+    transform-origin: 50px 50px;
+    transition: transform 0.6s cubic-bezier(0.34, 1.4, 0.64, 1),
+      opacity 0.4s ease;
+  }
+
+  .state-chat-bubble {
+    transform: scale(1);
+    opacity: 1;
+  }
+
+  .state-bot-cute {
+    transform: scale(0.4);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .ur-chatbot-trigger-btn:hover,
+  .chat-trigger-btn:hover {
+    .state-chat-bubble {
+      transform: scale(0.4) rotate(-15deg);
+      opacity: 0;
+    }
+
+    .state-bot-cute {
+      transform: scale(1);
+      opacity: 1;
+      pointer-events: auto;
+    }
+  }
+
+  /* Bot SVG Parts Animation Bindings */
+  .anim-astro-float {
+    animation: astroFloatMotion 6s ease-in-out infinite;
+    transform-origin: center;
+  }
+
+  .anim-eye-blink {
+    animation: eyeBlink 4s ease-in-out infinite;
+    transform-origin: 50px 34px;
+  }
+
+  .anim-eye-blink-head {
+    animation: eyeBlink 4s ease-in-out infinite;
+    transform-origin: 50px 50px;
+  }
+
+  .anim-antenna-signal {
+    animation: occasionalSignal 4.5s ease-out infinite;
+  }
+
+  .astro-arm-l {
+    transform-origin: 28px 62px;
+    animation: astroArmLeft 5s ease-in-out infinite;
+  }
+
+  .astro-arm-r {
+    transform-origin: 72px 62px;
+    animation: astroArmRight 5.5s ease-in-out infinite;
+  }
+
+  .astro-leg-l {
+    transform-origin: 39px 76px;
+    animation: astroLegLeft 6s ease-in-out infinite;
+  }
+
+  .astro-leg-r {
+    transform-origin: 61px 76px;
+    animation: astroLegRight 5.8s ease-in-out infinite;
+  }
+
+  .anim-astro-error {
+    animation: astroErrorShake 2.5s ease-in-out infinite;
+    transform-origin: 50px 50px;
+  }
+
+  .anim-core-warning {
+    animation: coreWarningBlink 0.9s ease-in-out infinite;
+    transform-origin: 50px 67px;
+  }
+
+  .anim-antenna-error {
+    animation: antennaErrorWave 1.2s ease-out infinite;
+  }
+
+  .anim-sweat-drop {
+    animation: sweatDropFlow 2s ease-in infinite;
+  }
+
+  .anim-eye-error {
+    animation: eyeErrorFlicker 1.8s ease-in-out infinite;
+  }
+
+  .anim-binary-stream-1 {
+    animation: binaryStreamLeft 2.4s linear infinite;
+  }
+
+  .anim-binary-stream-2 {
+    animation: binaryStreamRight 1.9s linear infinite;
+  }
+
+  .anim-binary-stream-3 {
+    animation: binaryStreamLeft 2.8s linear infinite;
+  }
+
+  .anim-visor-scanner {
+    animation: laserSweep 1.5s ease-in-out infinite;
+  }
+
+  .anim-cyber-eyes {
+    transform-origin: 50px 34px;
+    animation: cyberEyePulse 1.2s ease-in-out infinite;
+  }
+
+  .anim-core-fast {
+    animation: corePulseFast 0.6s ease-in-out infinite !important;
+    transform-origin: 50px 67px;
+  }
