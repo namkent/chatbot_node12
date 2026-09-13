@@ -5,17 +5,23 @@
   "scripts": {
     "dev": "webpack-dev-server --mode development --hot",
     "server": "node server.js",
+    "minio": "minio\\start_minio.bat",
+    "minio:setup": "minio\\setup_minio.bat",
     "build": "webpack --mode production",
     "postinstall": "node -e \"const fs=require('fs'),p='node_modules/mermaid/dist/mermaid.min.js';if(fs.existsSync(p)){let c=fs.readFileSync(p,'utf8'),t='if(uK[s])throw new Error(' + '`Diagram ${s} already registered.`' + ');';if(c.includes(t)){c=c.replace(t,'if(uK[s]){uK[s]=o;return;}');fs.writeFileSync(p,c);console.log('[postinstall] Mermaid mindmap patched successfully.');}}\""
   },
   "dependencies": {
     "@fontsource/noto-sans": "^5.3.0",
+    "cors": "^2.8.6",
     "dompurify": "^2.4.7",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
     "highlight.js": "^10.7.3",
     "katex": "^0.16.8",
     "markdown-it": "^13.0.2",
     "markdown-it-task-lists": "^2.1.1",
     "mermaid": "^9.4.3",
+    "msedge-tts": "^2.0.7",
     "vue": "^2.7.7"
   },
   "devDependencies": {

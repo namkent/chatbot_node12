@@ -24,9 +24,12 @@
       <!-- Chatbot Component -->
       <UrChatbot
         bot-name="Astro Bot AI"
-        status-text="Groq • Qwen 3.8 (27B)"
+        status-text="Groq • GPT-OSS 120B (Reasoning)"
         placeholder-text="Hỏi giải thuật, code, kiến thức..."
         :local-storage="true"
+        :attach-file="true"
+        :store-file="false"
+        :thinking="true"
       />
     </div>
   </div>

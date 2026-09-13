@@ -310,7 +310,22 @@
         >
           <!-- Tin nhắn của User -->
           <div v-if="msg.sender === 'user'" class="ur-chatbot-msg-user-wrapper">
+            <!-- Hiển thị ảnh đính kèm của User (nếu có) -->
+            <div v-if="msg.images && msg.images.length > 0" class="ur-chatbot-user-imgs-row">
+              <div
+                v-for="(uImg, uIdx) in msg.images"
+                :key="uIdx"
+                class="ur-chatbot-user-img-card"
+                :title="uImg.name || 'Ảnh đính kèm (click để phóng to)'"
+                @click="openImageModal(uImg.preview || uImg.url || uImg.base64, uImg.name)"
+              >
+                <img :src="uImg.preview || uImg.url || uImg.base64" :alt="uImg.name || 'Attachment'" />
+                <span v-if="uImg.sendMode" class="ur-chatbot-user-img-mode-badge">{{ uImg.sendMode === 'url' ? 'S3' : 'B64' }}</span>
+              </div>
+            </div>
+
             <div
+              v-if="msg.text"
               :class="[
                 'ur-chatbot-msg-user-text msg-user-text',
                 { 'is-collapsed': isMsgCollapsed(msg) }
@@ -342,7 +357,7 @@
               </button>
             </div>
 
-            <!-- Toolbar bên dưới câu hỏi: Nút Copy & Nút Tạo lại câu hỏi -->
+            <!-- Toolbar bên dưới câu hỏi: Nút Copy (đã bỏ nút Regenerate question) -->
             <div class="ur-chatbot-user-actions-toolbar">
               <button
                 type="button"
@@ -358,26 +373,13 @@
                   <polyline points="20 6 9 17 4 12"></polyline>
                 </svg>
               </button>
-              <button
-                type="button"
-                class="ur-chatbot-btn-action btn-msg-action"
-                title="Regenerate question"
-                :disabled="isStreaming || isLoading"
-                @click="retryUserQuestion(msg)"
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="1 4 1 10 7 10"></polyline>
-                  <polyline points="23 20 23 14 17 14"></polyline>
-                  <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
-                </svg>
-              </button>
             </div>
           </div>
 
           <!-- Tin nhắn của Bot có render Markdown & Highlight Code -->
           <div v-else class="ur-chatbot-msg-bot-wrapper msg-bot-wrapper">
             <!-- Hiệu ứng typing 3 chấm hiển thị NGAY LẬP TỨC khi bot chưa có chữ -->
-            <div v-if="!msg.text" class="ur-chatbot-typing-indicator msg-typing-indicator">
+            <div v-if="!msg.text && (!msg.thinking || !thinking)" class="ur-chatbot-typing-indicator msg-typing-indicator">
               <span class="ur-chatbot-typing-dots typing-dots">
                 <span class="ur-chatbot-dot dot"></span>
                 <span class="ur-chatbot-dot dot"></span>
@@ -385,15 +387,85 @@
               </span>
             </div>
 
-            <!-- Khi có chữ: Render Markdown -->
+            <!-- Khi có nội dung hoặc có suy nghĩ (thinking): Render -->
             <div v-else>
+              <!-- Khối Thinking (hiển thị khi props thinking = true và bot có nội dung thinking) -->
               <div
+                v-if="thinking && msg.thinking"
+                class="ur-chatbot-thinking-block"
+                :class="{ 'is-collapsed': isThinkingCollapsed(msg), 'is-streaming': msg.isStreaming && !msg.text }"
+              >
+                <div class="ur-chatbot-thinking-header" @click="toggleThinkingCollapse(msg)">
+                  <span class="ur-chatbot-thinking-title">{{ getThinkingHeaderLabel(msg) }}</span>
+                  <svg
+                    class="ur-chatbot-thinking-chevron"
+                    :class="{ 'is-collapsed': isThinkingCollapsed(msg) }"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <polyline points="18 15 12 9 6 15"></polyline>
+                  </svg>
+                </div>
+                <div v-show="!isThinkingCollapsed(msg)" class="ur-chatbot-thinking-content">
+                  <div
+                    v-for="(step, sIdx) in getThinkingSteps(msg.thinking)"
+                    :key="sIdx"
+                    class="ur-chatbot-thinking-step-item"
+                  >
+                    <div class="ur-chatbot-thinking-bullet">•</div>
+                    <div class="ur-chatbot-thinking-step-body">
+                      <div v-if="step.title" class="ur-chatbot-thinking-step-title">{{ step.title }}</div>
+                      <div v-if="step.desc" class="ur-chatbot-thinking-step-desc">{{ step.desc }}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Nội dung câu trả lời chính của Bot -->
+              <div
+                v-if="msg.text"
                 :class="['ur-chatbot-markdown markdown-content', { 'is-streaming': msg.isStreaming }]"
                 v-html="msg.html || renderHtml(msg.text, msg.isStreaming)"
               ></div>
 
-              <!-- Thanh action bar dưới câu trả lời của Bot (Copy data, Speak, Retry, Response Time) -->
-              <div v-if="!msg.isStreaming && !msg.isError" class="ur-chatbot-actions-toolbar msg-actions-toolbar">
+              <!-- Thanh action bar dưới câu trả lời của Bot (Ẩn khi là isResetNotice hoặc thông báo reset) -->
+              <div v-if="!msg.isStreaming && !msg.isError && !msg.isResetNotice && (!msg.text || msg.text.indexOf('Conversation has been reset!') === -1)" class="ur-chatbot-actions-toolbar msg-actions-toolbar">
+                <!-- Nút Prev / Next phân trang phiên bản (chỉ xuất hiện khi có >= 2 phiên bản trả lời) -->
+                <div v-if="getMsgVersionsCount(msg) > 1" class="ur-chatbot-version-nav">
+                  <button
+                    type="button"
+                    class="ur-chatbot-btn-version-nav"
+                    title="Câu trả lời trước"
+                    :disabled="isStreaming || getMsgCurrentVersionIndex(msg) <= 0"
+                    @click="prevMsgVersion(msg)"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                  </button>
+                  <span class="ur-chatbot-version-label">
+                    {{ getMsgCurrentVersionIndex(msg) + 1 }} / {{ getMsgVersionsCount(msg) }}
+                  </span>
+                  <button
+                    type="button"
+                    class="ur-chatbot-btn-version-nav"
+                    title="Câu trả lời sau"
+                    :disabled="isStreaming || getMsgCurrentVersionIndex(msg) >= getMsgVersionsCount(msg) - 1"
+                    @click="nextMsgVersion(msg)"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="9 18 15 12 9 6"></polyline>
+                    </svg>
+                  </button>
+                </div>
+
+                <!-- Nút Copy response -->
                 <button
                   type="button"
                   class="ur-chatbot-btn-action btn-msg-action"
@@ -408,6 +480,8 @@
                     <polyline points="20 6 9 17 4 12"></polyline>
                   </svg>
                 </button>
+
+                <!-- Nút Đọc to (Read aloud) -->
                 <button
                   type="button"
                   :class="['ur-chatbot-btn-action btn-msg-action', { 'is-speaking': speakingMsgId === msg.id }]"
@@ -426,10 +500,12 @@
                     <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
                   </svg>
                 </button>
+
+                <!-- Nút Regenerate response -->
                 <button
                   type="button"
                   class="ur-chatbot-btn-action btn-msg-action"
-                  title="Regenerate response"
+                  title="Regenerate response (Tạo thêm câu trả lời khác)"
                   :disabled="isStreaming"
                   @click="regenerateMessage(msg)"
                 >
@@ -439,6 +515,8 @@
                     <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path>
                   </svg>
                 </button>
+
+                <!-- Thời gian phản hồi -->
                 <span v-if="msg.responseTime" class="ur-chatbot-duration-badge msg-duration-badge">{{ msg.responseTime }}</span>
               </div>
             </div>
@@ -450,6 +528,14 @@
           v-if="suggestedPrompts && suggestedPrompts.length > 0 && !isStreaming"
           class="ur-chatbot-suggested-prompts suggested-prompts-in-body"
         >
+          <div v-if="suggestedTitle" class="ur-chatbot-suggested-title">
+            <svg class="ur-chatbot-suggested-title-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+              <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+            <span>{{ suggestedTitle }}</span>
+          </div>
           <div class="ur-chatbot-suggested-track suggested-prompts-track">
             <button
               v-for="(prompt, idx) in suggestedPrompts"
@@ -468,60 +554,217 @@
         </div>
       </div>
 
-      <!-- Nút Cuộn Xuống Dưới Cùng (Floating Round Button) -->
-      <button
-        v-if="showScrollBottomBtn"
-        type="button"
-        class="ur-chatbot-btn-scroll-bottom btn-scroll-bottom"
-        title="Scroll to bottom"
-        @click="scrollToBottom(true)"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"></line>
-          <polyline points="19 12 12 19 5 12"></polyline>
-        </svg>
-      </button>
-
       <!-- Footer nhập tin nhắn -->
-      <form class="ur-chatbot-footer chat-footer" @submit.prevent="handleSendMessage">
-        <textarea
-          ref="chatInput"
-          v-model="inputMsg"
-          rows="1"
-          class="ur-chatbot-input ur-chatbot-textarea"
-          :placeholder="isStreaming ? 'Generating response...' : placeholderText"
-          :disabled="isLoading || isStreaming"
-          @keydown="handleInputKeyDown"
-          @input="autoResizeInput"
-          @paste="autoResizeInput"
-        ></textarea>
-
-        <!-- Nút Dừng khi đang stream (chỉ hiển thị icon) -->
+      <form
+        class="ur-chatbot-footer chat-footer"
+        :class="{ 'is-dragover': isDraggingOver }"
+        @submit.prevent="handleSendMessage"
+        @dragover.prevent="onDragOver"
+        @dragenter.prevent="onDragEnter"
+        @dragleave.prevent="onDragLeave"
+        @drop.prevent="onDrop"
+      >
+        <!-- Nút Cuộn Xuống Dưới Cùng: Nổi phía trên đỉnh khung input chat, không che nội dung input -->
         <button
-          v-if="isStreaming"
+          v-if="showScrollBottomBtn"
           type="button"
-          class="ur-chatbot-btn-stop btn-stop"
-          title="Stop generating"
-          @click="stopStreaming"
+          class="ur-chatbot-btn-scroll-bottom btn-scroll-bottom"
+          title="Cuộn xuống dưới cùng"
+          @click.stop.prevent="scrollToBottom(true)"
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-            <rect x="4" y="4" width="16" height="16" rx="3" ry="3" />
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <polyline points="19 12 12 19 5 12"></polyline>
           </svg>
         </button>
 
-        <!-- Nút Gửi bằng icon send -->
-        <button
-          v-else
-          type="submit"
-          class="ur-chatbot-btn-send btn-send"
-          title="Send message (Enter to send, Shift + Enter for new line)"
-          :disabled="isLoading || !inputMsg.trim()"
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
+        <!-- Input file ẩn để chọn ảnh từ máy tính -->
+        <input
+          v-if="canAttachFile"
+          ref="imageFileInput"
+          type="file"
+          accept="image/*"
+          multiple
+          style="display: none"
+          @change="handleFileInputChange"
+        />
+
+        <!-- Khung Card bo góc tròn hiện đại phong cách Gemini -->
+        <div class="ur-chatbot-input-card">
+          <!-- Dải thumbnail ảnh đính kèm (các ô vuông nhỏ) ở vị trí TOP của khung input -->
+          <div v-if="canAttachFile && pendingImages.length > 0" class="ur-chatbot-attachments-strip">
+            <div
+              v-for="(img, idx) in pendingImages"
+              :key="img.id || idx"
+              :class="['ur-chatbot-thumb-box', { 'is-uploading': img.uploading, 'is-error': !!img.error }]"
+              :title="img.name || 'Ảnh ' + (idx + 1)"
+            >
+              <img :src="img.preview || img.url || img.base64" alt="thumbnail" class="ur-chatbot-thumb-img" @click="openImageModal(img.preview || img.url || img.base64, img.name)" />
+
+              <!-- Spinner quay khi đang upload lên MinIO -->
+              <div v-if="img.uploading" class="ur-chatbot-thumb-loader" title="Đang tải lên MinIO...">
+                <svg class="ur-chatbot-thumb-spin-icon" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="3" stroke-dasharray="14 14"></circle>
+                </svg>
+              </div>
+
+              <!-- Nút X nhỏ để xoá ảnh (đồng thời xoá luôn ở MinIO nếu storeFile=true) -->
+              <button
+                type="button"
+                class="ur-chatbot-thumb-btn-remove"
+                title="Xóa ảnh này"
+                :disabled="img.uploading"
+                @click.stop.prevent="removePendingImage(idx)"
+              >
+                <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Textarea nhập nội dung tin nhắn -->
+          <textarea
+            ref="chatInput"
+            v-model="inputMsg"
+            rows="1"
+            class="ur-chatbot-input ur-chatbot-textarea"
+            :placeholder="isStreaming ? 'Generating response...' : (pendingImages.length > 0 ? 'Hỏi điều gì về ảnh (hoặc bấm gửi)...' : placeholderText)"
+            :disabled="isLoading || isStreaming"
+            @keydown="handleInputKeyDown"
+            @input="autoResizeInput"
+            @paste="handlePaste"
+          ></textarea>
+
+          <!-- Dòng thanh công cụ dưới: Nút dấu + & Nút Thinking bên trái, Select Model & nút gửi bên phải -->
+          <div class="ur-chatbot-card-bottom-bar">
+            <div class="ur-chatbot-card-bottom-left">
+              <!-- Nút dấu + đính kèm ảnh (chỉ hiển thị khi canAttachFile = true) -->
+              <button
+                v-if="canAttachFile"
+                type="button"
+                class="ur-chatbot-btn-plus"
+                title="Đính kèm ảnh (hoặc kéo thả / dán Ctrl+V)"
+                :disabled="isLoading || isStreaming"
+                @click="$refs.imageFileInput.click()"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+              </button>
+
+              <!-- Nút bật / tắt Thinking (Icon bóng đèn phát sáng có dấu hỏi chấm) -->
+              <button
+                type="button"
+                :class="['ur-chatbot-btn-thinking-toggle', { 'is-active': isThinkingActive && isCurrentModelSupportThinking }]"
+                :title="thinkingTooltip"
+                :disabled="isLoading || isStreaming || !isCurrentModelSupportThinking"
+                @click="toggleThinkingActive"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                  <!-- Thân bóng đèn lớn, rõ nét -->
+                  <path d="M8.5 14.8C7.2 13.5 6 11.6 6 9.2a6 6 0 1 1 12 0c0 2.4-1.2 4.3-2.5 5.6l-.7 2.2H9.2l-.7-2.2z" />
+                  <!-- Đui đèn -->
+                  <path d="M9.5 19.5h5" />
+                  <!-- Dấu hỏi chấm to, rõ nét ngay giữa bóng đèn -->
+                  <path d="M10.3 7.8c0-1.1.7-1.8 1.7-1.8s1.7.7 1.7 1.8c0 1.2-1.7 1.8-1.7 3.2" stroke-width="2.3" />
+                  <circle cx="12" cy="13.3" r="1" fill="currentColor" stroke="none" />
+                  <!-- 6 tia sáng xung quanh (3 bên trái, 3 bên phải) -->
+                  <line x1="2.8" y1="3.8" x2="4.6" y2="5.6" />
+                  <line x1="1.2" y1="9.5" x2="3.4" y2="9.5" />
+                  <line x1="2.8" y1="15.2" x2="4.6" y2="13.6" />
+                  <line x1="21.2" y1="3.8" x2="19.4" y2="5.6" />
+                  <line x1="22.8" y1="9.5" x2="20.6" y2="9.5" />
+                  <line x1="21.2" y1="15.2" x2="19.4" y2="13.6" />
+                </svg>
+              </button>
+            </div>
+
+            <div class="ur-chatbot-card-bottom-right">
+              <!-- Select list model dropdown (như trong ảnh mẫu) -->
+              <div class="ur-chatbot-model-select-wrapper" ref="modelSelectDropdown">
+                <button
+                  type="button"
+                  class="ur-chatbot-model-select-btn"
+                  :title="'Mô hình đang chọn: ' + currentModelDisplayName + ' (Bấm để đổi)'"
+                  :disabled="isLoading || isStreaming"
+                  @click.stop="toggleModelDropdown"
+                >
+                  <span class="ur-chatbot-model-select-name">{{ currentModelDisplayName }}</span>
+                  <svg
+                    :class="['ur-chatbot-model-chevron', { 'is-open': showModelDropdown }]"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+
+                <!-- Popover upward menu (danh sách trực tiếp không tiêu đề) -->
+                <transition name="ur-chatbot-dropdown-popover">
+                  <div v-if="showModelDropdown" class="ur-chatbot-model-menu" @click.stop>
+                    <div class="ur-chatbot-model-menu-list">
+                      <div
+                        v-for="mItem in modelListOptions"
+                        :key="mItem.id"
+                        :class="['ur-chatbot-model-option', { 'is-selected': effectiveModel === mItem.id }]"
+                        @click="selectModel(mItem.id)"
+                      >
+                        <div class="ur-chatbot-model-option-main">
+                          <div class="ur-chatbot-model-option-name">
+                            <span>{{ mItem.name }}</span>
+                            <span v-if="mItem.badge" :class="['ur-chatbot-model-tag', mItem.badgeType || 'badge-default']">
+                              {{ mItem.badge }}
+                            </span>
+                          </div>
+                          <div class="ur-chatbot-model-option-desc">{{ mItem.desc }}</div>
+                        </div>
+                        <svg v-if="effectiveModel === mItem.id" class="ur-chatbot-model-check-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </transition>
+              </div>
+
+              <!-- Nút Dừng khi đang stream -->
+              <button
+                v-if="isStreaming"
+                type="button"
+                class="ur-chatbot-btn-stop-gemini"
+                title="Stop generating"
+                @click="stopStreaming"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                  <rect x="4" y="4" width="16" height="16" rx="3" ry="3" />
+                </svg>
+              </button>
+
+              <!-- Nút Gửi hình tròn có mũi tên lên (↑) kiểu Gemini -->
+              <button
+                v-else
+                type="submit"
+                class="ur-chatbot-btn-send-gemini"
+                title="Send message (Enter to send, Shift + Enter for new line)"
+                :disabled="isLoading || isUploadingAnyImage || (!inputMsg.trim() && pendingImages.length === 0)"
+              >
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                  <line x1="12" y1="19" x2="12" y2="5"></line>
+                  <polyline points="5 12 12 5 19 12"></polyline>
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
       </form>
 
       <!-- Modal xác nhận Reset cuộc trò chuyện -->
@@ -1342,18 +1585,67 @@ function looksLikeMath(formula) {
 
 function renderMathFormulas(content) {
   if (!content) return '';
-  let processed = content.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
+
+  // 1. Tạm thời bảo vệ các khối code (fenced code blocks & inline code) để không vô tình render math bên trong code
+  const codeBlocks = [];
+  let textWithoutCode = content.replace(/(```[\s\S]*?```|`[^`\n]+?`)/g, (match) => {
+    const placeholder = `%%UR_MATH_CODE_${codeBlocks.length}%%`;
+    codeBlocks.push(match);
+    return placeholder;
+  });
+
+  // 2. Render Block/Display Math:
+  // 2A. Chuẩn LaTeX \[ ... \]
+  textWithoutCode = textWithoutCode.replace(/\\\[([\s\S]+?)\\\]/g, (match, formula) => {
     const trimmed = formula.trim();
-    if (!looksLikeMath(trimmed)) return match;
+    if (!trimmed) return match;
     try {
       const html = katexRenderSilent(trimmed, { displayMode: true, throwOnError: false, strict: 'ignore', trust: true });
-      return html ? `<div class="ur-chatbot-math-block math-block">${html}</div>` : match;
+      return html ? `\n\n<div class="ur-chatbot-math-block math-block">${html}</div>\n\n` : match;
     } catch (e) {
       return match;
     }
   });
 
-  processed = processed.replace(/(^|[^\\])\$([^\$\n]+?)\$/g, (match, prefix, formula) => {
+  // 2B. Chuẩn $$ ... $$
+  textWithoutCode = textWithoutCode.replace(/\$\$([\s\S]+?)\$\$/g, (match, formula) => {
+    const trimmed = formula.trim();
+    if (!trimmed) return match;
+    try {
+      const html = katexRenderSilent(trimmed, { displayMode: true, throwOnError: false, strict: 'ignore', trust: true });
+      return html ? `\n\n<div class="ur-chatbot-math-block math-block">${html}</div>\n\n` : match;
+    } catch (e) {
+      return match;
+    }
+  });
+
+  // 2C. Fallback cho block math dạng [ \n ... \n ] chứa lệnh LaTeX (\frac, \times, \left, \right, \sqrt, \sum, \int, \cdot)
+  textWithoutCode = textWithoutCode.replace(/(?:^|\n)\s*\[\s*\n([\s\S]+?)\n\s*\](?=\s*(?:\n|$))/g, (match, formula) => {
+    const trimmed = formula.trim();
+    if (!trimmed || !/\\(?:frac|times|left|right|sqrt|pm|cdot|sum|int|mathbf|alpha|beta|pi)/.test(trimmed)) return match;
+    try {
+      const html = katexRenderSilent(trimmed, { displayMode: true, throwOnError: false, strict: 'ignore', trust: true });
+      return html ? `\n\n<div class="ur-chatbot-math-block math-block">${html}</div>\n\n` : match;
+    } catch (e) {
+      return match;
+    }
+  });
+
+  // 3. Render Inline Math:
+  // 3A. Chuẩn LaTeX \( ... \)
+  textWithoutCode = textWithoutCode.replace(/\\\(([\s\S]+?)\\\)/g, (match, formula) => {
+    const trimmed = formula.trim();
+    if (!trimmed) return match;
+    try {
+      const html = katexRenderSilent(trimmed, { displayMode: false, throwOnError: false, strict: 'ignore', trust: true });
+      return html || match;
+    } catch (e) {
+      return match;
+    }
+  });
+
+  // 3B. Chuẩn $ ... $ (không phải escaped \$ và không phải giá tiền tệ $100)
+  textWithoutCode = textWithoutCode.replace(/(^|[^\\])\$([^\$\n]+?)\$/g, (match, prefix, formula) => {
     const trimmed = formula.trim();
     if (/^\d+(\.\d+)?$/.test(trimmed)) return match;
     if (!looksLikeMath(trimmed)) return match;
@@ -1365,7 +1657,24 @@ function renderMathFormulas(content) {
     }
   });
 
-  return processed;
+  // 3C. Fallback cho inline math dạng ( ... \frac ... ) hoặc ( ... \times ... ) chứa rõ ràng lệnh LaTeX
+  textWithoutCode = textWithoutCode.replace(/\(\s*([^\n()]*?\\(?:frac|times|sqrt|pm|cdot|sum|int|left|right|alpha|beta|pi)[^\n()]*?)\s*\)/g, (match, formula) => {
+    const trimmed = formula.trim();
+    if (!trimmed) return match;
+    try {
+      const rendered = katexRenderSilent(trimmed, { displayMode: false, throwOnError: false, strict: 'ignore', trust: true });
+      return rendered || match;
+    } catch (e) {
+      return match;
+    }
+  });
+
+  // 4. Khôi phục các khối code ban đầu
+  for (let i = 0; i < codeBlocks.length; i++) {
+    textWithoutCode = textWithoutCode.replace(`%%UR_MATH_CODE_${i}%%`, () => codeBlocks[i]);
+  }
+
+  return textWithoutCode;
 }
 
 function fixStreamingMarkdown(text, isStreaming) {
@@ -1411,6 +1720,8 @@ function parseAndSanitizeMarkdown(markdownText, isStreaming = false) {
       ADD_TAGS: [
         'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
         'math', 'annotation', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac',
+        'mspace', 'mtext', 'mtable', 'mtr', 'mtd', 'msqrt', 'mpadded', 'mphantom',
+        'munder', 'mover', 'munderover', 'msubsup', 'menclose', 'mmultiscripts',
         'span', 'div', 'button', 'svg', 'path', 'rect', 'polyline', 'line', 'circle', 'polygon',
         'pre', 'code', 'figure', 'figcaption', 'img', 'a', 'picture', 'source',
         'input', 'label', 'del', 's', 'ins', 'mark', 'kbd', 'sup', 'sub', 'details', 'summary',
@@ -1422,7 +1733,8 @@ function parseAndSanitizeMarkdown(markdownText, isStreaming = false) {
         'viewBox', 'fill', 'stroke', 'stroke-width',
         'stroke-linecap', 'stroke-linejoin', 'displayMode', 'aria-hidden', 'title', 'style', 'class',
         'src', 'alt', 'loading', 'onerror', 'cx', 'cy', 'r', 'x1', 'y1', 'x2', 'y2', 'points',
-        'type', 'checked', 'disabled', 'id', 'for', 'open', 'align', 'colspan', 'rowspan'
+        'type', 'checked', 'disabled', 'id', 'for', 'open', 'align', 'colspan', 'rowspan',
+        'encoding', 'xmlns', 'display'
       ]
     });
   } catch (err) {
@@ -1478,7 +1790,7 @@ export default {
     },
     model: {
       type: String,
-      default: 'qwen/qwen3.8-27b'
+      default: ''
     },
     knowledgeBase: {
       type: String,
@@ -1486,7 +1798,7 @@ export default {
     },
     systemPrompt: {
       type: String,
-      default: 'Bạn là Astro Bot AI - một trợ lý không gian thông minh am hiểu công nghệ, lập trình và khoa học. NGUYÊN TẮC BẮT BUỘC: 1. Luôn tự động nhận diện và phản hồi bằng ĐÚNG NGÔN NGỮ mà người dùng vừa sử dụng trong câu hỏi. 2. Khi viết code, luôn sử dụng markdown code block có chỉ định tên ngôn ngữ cụ thể. 3. Khi người dùng yêu cầu hình ảnh hoặc khi chia sẻ ảnh minh họa, hãy luôn sử dụng trực tiếp cú pháp markdown ảnh ![mô tả ngắn](url) trong nội dung văn bản thông thường (TUYỆT ĐỐI KHÔNG bọc mã ảnh vào trong code block ```markdown ... ```) để hình ảnh được hiển thị trực tiếp cho người dùng xem. 4. Khi người dùng yêu cầu vẽ lưu đồ, sơ đồ luồng, sơ đồ thuật toán, biểu đồ trình tự, kiến trúc hệ thống hoặc quy trình, hãy luôn sử dụng cú pháp biểu đồ Mermaid chuẩn trong code block ```mermaid ... ``` (hỗ trợ đầy đủ Mermaid v11: flowchart, sequenceDiagram, gantt, pie, mindmap, quadrantChart, sankey-beta, timeline, xychart-beta, classDiagram, stateDiagram-v2, erDiagram, journey, gitGraph) để hệ thống tự động kết xuất biểu đồ đồ hoạ trực quan đẹp mắt.'
+      default: 'Bạn là Astro Bot AI - một trợ lý không gian thông minh am hiểu công nghệ, lập trình và khoa học. NGUYÊN TẮC BẮT BUỘC: 1. Luôn tự động nhận diện và phản hồi bằng ĐÚNG NGÔN NGỮ mà người dùng vừa sử dụng trong câu hỏi. 2. Khi viết code, luôn sử dụng markdown code block có chỉ định tên ngôn ngữ cụ thể. 3. Khi người dùng yêu cầu hình ảnh hoặc khi chia sẻ ảnh minh họa, hãy luôn sử dụng trực tiếp cú pháp markdown ảnh ![mô tả ngắn](url) trong nội dung văn bản thông thường (TUYỆT ĐỐI KHÔNG bọc mã ảnh vào trong code block ```markdown ... ```) để hình ảnh được hiển thị trực tiếp cho người dùng xem. 4. Khi người dùng yêu cầu vẽ lưu đồ, sơ đồ luồng, sơ đồ thuật toán, biểu đồ trình tự, kiến trúc hệ thống hoặc quy trình, hãy luôn sử dụng cú pháp biểu đồ Mermaid chuẩn trong code block ```mermaid ... ``` (hỗ trợ đầy đủ Mermaid v11: flowchart, sequenceDiagram, gantt, pie, mindmap, quadrantChart, sankey-beta, timeline, xychart-beta, classDiagram, stateDiagram-v2, erDiagram, journey, gitGraph) để hệ thống tự động kết xuất biểu đồ đồ hoạ trực quan đẹp mắt. QUY TẮC MERMAID BẮT BUỘC ĐỂ TRÁNH LỖI CÚ PHÁP: - Trong flowchart: MỌI nhãn node có chứa dấu ngoặc vuông [], ngoặc tròn (), dấu so sánh (<, >), phép gán (=), dấu hỏi (?) hay phép tính toán BẮT BUỘC PHẢI BỌC TRONG DẤU NGOẶC KÉP, ví dụ: A["Start"], B{"i < n"}, C["swapped = false"], E{"arr[j] > arr[j+1]?"}, F["swap arr[j], arr[j+1]"], J["Break (sorted)"]. Tuyệt đối KHÔNG viết B{i < n} hay F[arr[j]] vì sẽ làm hỏng parser. - Trong classDiagram: Dùng dấu ngã ~ cho generic types như List~String~ thay vì List<String>. - Trong pie chart: Nhãn lát cắt luôn bọc trong ngoặc kép: "Label" : 40. - Không dùng từ khoá bảo lưu (end, subgraph, class, style) làm ID node.'
     },
     historyLimit: {
       type: Number,
@@ -1519,6 +1831,27 @@ export default {
     maxStoredMessages: {
       type: Number,
       default: 40
+    },
+    attachFile: {
+      type: Boolean,
+      default: false
+    },
+    storeFile: {
+      type: Boolean,
+      default: false
+    },
+    thinking: {
+      type: Boolean,
+      default: false
+    },
+    models: {
+      type: Array,
+      default: () => [
+        { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', desc: 'Lý luận sâu, toán học & code', badge: 'Reasoning', badgeType: 'badge-reasoning', supportsThinking: true },
+        { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B', desc: 'Đa phương thức, hiểu ảnh & tiếng Việt', badge: 'Vision', badgeType: 'badge-vision', supportsThinking: false },
+        { id: 'qwen/qwen3.6-27b', name: 'Qwen 3.6 27B', desc: 'Nhận diện ảnh nhanh, siêu tốc', badge: 'Vision', badgeType: 'badge-vision', supportsThinking: false },
+        { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B', desc: 'Gọn nhẹ, tốc độ phản hồi cao', badge: 'Fast', badgeType: 'badge-fast', supportsThinking: false }
+      ]
     }
   },
   data() {
@@ -1544,6 +1877,9 @@ export default {
       showResetConfirm: false, // Modal xác nhận làm mới cuộc trò chuyện
       userMsgExpandedMap: {}, // Map lưu trạng thái expand của từng tin nhắn user
       userMsgCollapsibleMap: {}, // Map lưu trạng thái có dài quá 3 dòng của từng tin nhắn user
+      thinkingCollapseMap: {}, // Map lưu trạng thái đóng/mở khối suy nghĩ thinking của bot
+      showModelDropdown: false, // Trạng thái mở menu dropdown chọn model
+      isThinkingActive: !!this.thinking, // Trạng thái bật/tắt reasoning/thinking từ UI
       zeroGBot: {
         x: 220,
         y: 120,
@@ -1553,11 +1889,13 @@ export default {
         vRot: 0.6,
         isDragging: false
       },
+      isDraggingOver: false,
+      pendingImages: [],
       inputMsg: '',
       isLoading: false,
       isStreaming: false,
       isErrorState: false,
-      effectiveModel: this.model,
+      effectiveModel: this.model || 'openai/gpt-oss-120b',
       effectiveBotName: this.botName,
       abortController: null,
       typingTimer: null,
@@ -1566,6 +1904,7 @@ export default {
       speakingMsgId: null,
       requestStartTime: null,
       suggestedPrompts: [],
+      suggestedTitle: '',
       visibleCount: this.maxVisibleMessages || 50,
       messageList: [
         {
@@ -1581,7 +1920,10 @@ export default {
   },
   watch: {
     model(val) {
-      this.effectiveModel = val;
+      this.effectiveModel = val || 'openai/gpt-oss-120b';
+    },
+    thinking(val) {
+      this.isThinkingActive = !!val;
     },
     botName(val) {
       this.effectiveBotName = val;
@@ -1616,6 +1958,15 @@ export default {
     }
   },
   computed: {
+    canAttachFile() {
+      return !!this.attachFile;
+    },
+    shouldStoreFile() {
+      return !!(this.canAttachFile && this.storeFile);
+    },
+    isUploadingAnyImage() {
+      return (this.pendingImages || []).some(function (img) { return !!img.uploading; });
+    },
     visibleMessageList() {
       if (!this.virtualScroll || this.messageList.length <= this.visibleCount) {
         return this.messageList;
@@ -1635,6 +1986,11 @@ export default {
       if (this.hasBotError) return 'Connection issue • Bot error';
       if (this.isStreaming) return 'Typing response...';
       if (this.isLoading) return 'Connecting...';
+      if (this.currentModelDisplayName) {
+        const found = this.modelListOptions.find(m => m.id === this.effectiveModel);
+        const badge = found && found.badge ? ` • ${found.badge}` : '';
+        return `Groq • ${this.currentModelDisplayName}${badge}`;
+      }
       return this.statusText;
     },
     mermaidCanvasStyle() {
@@ -1644,6 +2000,51 @@ export default {
         transformOrigin: 'center center',
         transition: m.isDragging ? 'none' : 'transform 0.12s ease-out'
       };
+    },
+    modelListOptions() {
+      const baseList = Array.isArray(this.models) && this.models.length > 0
+        ? [...this.models]
+        : [
+            { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', desc: 'Lý luận sâu, toán học & code', badge: 'Reasoning', badgeType: 'badge-reasoning', supportsThinking: true },
+            { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B', desc: 'Đa phương thức, hiểu ảnh & tiếng Việt', badge: 'Vision', badgeType: 'badge-vision', supportsThinking: false },
+            { id: 'qwen/qwen3.6-27b', name: 'Qwen 3.6 27B', desc: 'Nhận diện ảnh nhanh, siêu tốc', badge: 'Vision', badgeType: 'badge-vision', supportsThinking: false },
+            { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B', desc: 'Gọn nhẹ, tốc độ phản hồi cao', badge: 'Fast', badgeType: 'badge-fast', supportsThinking: false }
+          ];
+      if (this.effectiveModel && !baseList.some(m => m.id === this.effectiveModel)) {
+        const isReasoning = /120b|deepseek-r1|reasoning/i.test(this.effectiveModel);
+        baseList.unshift({
+          id: this.effectiveModel,
+          name: this.effectiveModel.split('/').pop(),
+          desc: 'Mô hình tuỳ chỉnh',
+          badge: isReasoning ? 'Reasoning' : 'Custom',
+          badgeType: isReasoning ? 'badge-reasoning' : 'badge-default',
+          supportsThinking: isReasoning
+        });
+      }
+      return baseList;
+    },
+    currentModelDisplayName() {
+      const found = this.modelListOptions.find(m => m.id === this.effectiveModel);
+      if (found) return found.name;
+      if (!this.effectiveModel) return 'Chọn Model';
+      const parts = this.effectiveModel.split('/');
+      return parts[parts.length - 1];
+    },
+    isCurrentModelSupportThinking() {
+      const found = this.modelListOptions.find(m => m.id === this.effectiveModel);
+      if (!found) return false;
+      if (typeof found.supportsThinking === 'boolean') {
+        return found.supportsThinking;
+      }
+      return (found.badge === 'Reasoning' || /120b|deepseek-r1|reasoning/i.test(found.id));
+    },
+    thinkingTooltip() {
+      if (!this.isCurrentModelSupportThinking) {
+        return 'Mô hình này không hỗ trợ suy luận (Reasoning not supported)';
+      }
+      return this.isThinkingActive
+        ? 'Thinking: ĐANG BẬT (AI sẽ tư duy logic trước khi trả lời)'
+        : 'Thinking: ĐANG TẮT (Bấm để bật tư duy suy luận)';
     }
   },
   created() {
@@ -1675,6 +2076,14 @@ export default {
     if (this.isFullscreen) {
       this.startZeroGBot();
     }
+    this._docClickListener = (e) => {
+      if (this.showModelDropdown && this.$refs.modelSelectDropdown) {
+        if (!this.$refs.modelSelectDropdown.contains(e.target)) {
+          this.showModelDropdown = false;
+        }
+      }
+    };
+    document.addEventListener('click', this._docClickListener);
   },
   updated() {
     this.checkUserMsgHeights();
@@ -1697,9 +2106,27 @@ export default {
     if (this._escKeyHandler) {
       window.removeEventListener('keydown', this._escKeyHandler);
     }
+    if (this._docClickListener) {
+      document.removeEventListener('click', this._docClickListener);
+    }
     this.stopZeroGBot();
   },
   methods: {
+    toggleModelDropdown() {
+      this.showModelDropdown = !this.showModelDropdown;
+    },
+    selectModel(modelId) {
+      this.effectiveModel = modelId;
+      this.showModelDropdown = false;
+      this.$emit('model-change', modelId);
+      this.saveToLocalStorage();
+    },
+    toggleThinkingActive() {
+      if (!this.isCurrentModelSupportThinking) return;
+      this.isThinkingActive = !this.isThinkingActive;
+      this.$emit('update:thinking', this.isThinkingActive);
+      this.saveToLocalStorage();
+    },
     retryLastAction() {
       if (this.isStreaming || this.isLoading) return;
       for (let i = this.messageList.length - 1; i >= 0; i--) {
@@ -1734,7 +2161,7 @@ export default {
         this.scrollToBottom();
       });
     },
-    finishStream(botMsgObj) {
+    finishStream(botMsgObj, isRegeneration) {
       if (this._htmlRafPending) {
         this._htmlRafPending = false;
       }
@@ -1748,13 +2175,43 @@ export default {
         this.$set(botMsgObj, 'responseTime', elapsed);
       }
 
+      if (botMsgObj.thinking && !botMsgObj.thinkingDuration) {
+        const durSec = Math.max(1, Math.round((Date.now() - (this.thinkingStartTime || this.requestStartTime)) / 1000));
+        this.$set(botMsgObj, 'thinkingDuration', `${durSec}s`);
+      }
+
+      // Trích xuất gợi ý nếu model xuất khối JSON câu hỏi gợi ý trong nội dung text
+      this.extractSuggestionsFromText(botMsgObj);
+
       if (botMsgObj.text) {
         this.$set(botMsgObj, 'lang', detectLanguage(botMsgObj.text));
 
-        this.apiMessagesHistory.push({
-          role: 'assistant',
-          content: botMsgObj.text
-        });
+        // Quản lý các phiên bản câu trả lời (Versions)
+        if (!botMsgObj.versions || !Array.isArray(botMsgObj.versions)) {
+          this.$set(botMsgObj, 'versions', []);
+        }
+
+        const newVersionData = {
+          text: botMsgObj.text,
+          html: botMsgObj.html,
+          responseTime: botMsgObj.responseTime || '',
+          lang: botMsgObj.lang || '',
+          thinking: botMsgObj.thinking || '',
+          thinkingDuration: botMsgObj.thinkingDuration || ''
+        };
+
+        if (isRegeneration) {
+          botMsgObj.versions.push(newVersionData);
+          this.$set(botMsgObj, 'currentVersionIdx', botMsgObj.versions.length - 1);
+          this.syncActiveVersionToHistory(botMsgObj);
+        } else {
+          botMsgObj.versions = [newVersionData];
+          this.$set(botMsgObj, 'currentVersionIdx', 0);
+          this.apiMessagesHistory.push({
+            role: 'assistant',
+            content: botMsgObj.text
+          });
+        }
 
         this.$emit('message', { role: 'assistant', content: botMsgObj.text });
         this.saveToLocalStorage();
@@ -1774,30 +2231,311 @@ export default {
         this.renderMermaidDiagrams();
       }, delay);
     },
+    sanitizeMermaidNode(token) {
+      token = token.trim();
+      if (!token) return token;
+
+      // Giữ lại class suffix nếu có: ví dụ A[text]:::myClass
+      let classSuffix = '';
+      const classMatch = token.match(/:::([a-zA-Z0-9_-]+)$/);
+      if (classMatch) {
+        classSuffix = ':::' + classMatch[1];
+        token = token.slice(0, -classSuffix.length).trim();
+      }
+
+      // Danh sách các cặp delimiter của Mermaid (ưu tiên cặp 2 ký tự trước)
+      const delimPairs = [
+        { open: '([', close: '])' }, // stadium
+        { open: '[[', close: ']]' }, // subroutine
+        { open: '[(', close: ')]' }, // cylinder
+        { open: '((', close: '))' }, // circle
+        { open: '{{', close: '}}' }, // hexagon
+        { open: '[/', close: '/]' }, // parallelogram
+        { open: '[\\', close: '\\]' }, // parallelogram alt
+        { open: '>', close: ']' },   // asymmetric / flag
+        { open: '[', close: ']' },   // rectangle
+        { open: '(', close: ')' },   // rounded
+        { open: '{', close: '}' }    // rhombus / decision
+      ];
+
+      for (let i = 0; i < delimPairs.length; i++) {
+        const p = delimPairs[i];
+        const closeIdx = token.lastIndexOf(p.close);
+        if (closeIdx === -1 || closeIdx !== token.length - p.close.length) {
+          continue;
+        }
+
+        const openIdx = token.indexOf(p.open);
+        if (openIdx <= 0) {
+          continue;
+        }
+
+        const rawNodeId = token.slice(0, openIdx).trim();
+        if (!/^[a-zA-Z0-9_-]+$/.test(rawNodeId)) {
+          continue;
+        }
+
+        let safeNodeId = rawNodeId;
+        if (/^(end|subgraph|class|click|style|graph|flowchart|direction|default)$/i.test(safeNodeId)) {
+          safeNodeId = 'node_' + safeNodeId;
+        }
+
+        let inner = token.slice(openIdx + p.open.length, closeIdx).trim();
+        if ((inner.startsWith('"') && inner.endsWith('"')) || (inner.startsWith("'") && inner.endsWith("'"))) {
+          if (inner.length >= 2) {
+            inner = inner.slice(1, -1);
+          }
+        }
+
+        // Thoát an toàn mọi ký tự nhạy cảm có thể làm vỡ lexer/parser của Mermaid bằng HTML entity codes
+        const safeInner = inner
+          .replace(/"/g, "'")
+          .replace(/\[/g, '#91;')
+          .replace(/\]/g, '#93;')
+          .replace(/\(/g, '#40;')
+          .replace(/\)/g, '#41;')
+          .replace(/\{/g, '#123;')
+          .replace(/\}/g, '#125;')
+          .replace(/</g, '#60;')
+          .replace(/>/g, '#62;');
+
+        return `${safeNodeId}${p.open}"${safeInner}"${p.close}${classSuffix}`;
+      }
+
+      // Nếu chỉ là node ID đơn (ví dụ `end` hay `style` đứng riêng làm endpoint: E -->|no| end)
+      if (/^(end|subgraph|class|click|style|graph|flowchart|direction|default)$/i.test(token)) {
+        return 'node_' + token + classSuffix;
+      }
+
+      return token + classSuffix;
+    },
+    repairFlowchartCode(code) {
+      const lines = code.split('\n');
+      const arrowRegex = /(\s*(?:-->|---|==>|===|-\.->|-\.-|<-->|<==>|o--o|x--x)(?:\|[^|\n]*\|)?\s*)/g;
+
+      const repairedLines = lines.map(line => {
+        const trimmed = line.trim();
+        if (!trimmed) return line;
+
+        // Bỏ qua dòng chỉ là comment
+        if (/^%%/.test(trimmed)) return line;
+
+        // Bỏ qua dòng khai báo tiêu đề hoặc định nghĩa style / class
+        if (/^\s*(?:flowchart|graph|direction|style|classDef|linkStyle|click|accTitle|accDescr)\b/i.test(trimmed)) {
+          return line;
+        }
+
+        // Subgraph handling: ví dụ subgraph "Title with spaces" hoặc subgraph Sub1
+        if (/^\s*subgraph\b/i.test(trimmed)) {
+          const subMatch = trimmed.match(/^subgraph\s+(.+)$/i);
+          if (subMatch) {
+            let title = subMatch[1].trim();
+            if (!/^[a-zA-Z0-9_-]+(\s*\[.*\])?$/.test(title)) {
+              if (title.startsWith('"') && title.endsWith('"')) {
+                title = title.slice(1, -1);
+              }
+              const safeTitle = title.replace(/"/g, "'");
+              const id = 'sub_' + Math.random().toString(36).slice(2, 7);
+              return line.replace(trimmed, `subgraph ${id} ["${safeTitle}"]`);
+            }
+          }
+          return line;
+        }
+
+        if (/^\s*end\b/i.test(trimmed)) {
+          return line;
+        }
+
+        // Tách indentation ban đầu để bảo toàn cấu trúc thụt đầu dòng
+        const indentMatch = line.match(/^(\s*)/);
+        const indent = indentMatch ? indentMatch[1] : '';
+
+        // Tách các liên kết (edges) trên dòng
+        const parts = trimmed.split(arrowRegex);
+        if (parts.length <= 1) {
+          // Dòng chỉ có 1 node đơn lẻ
+          return indent + this.sanitizeMermaidNode(trimmed);
+        }
+
+        let repairedLine = '';
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (arrowRegex.test(part)) {
+            // Đây là mũi tên liên kết (edge)
+            // Chuẩn hoá nhãn edge nếu có ký tự đặc biệt: -->|true| hoặc -->|arr[j] < 5|
+            const safeEdge = part.replace(/(\|)([^|\n]+)(\|)/g, (m, p1, edgeText, p3) => {
+              if (/[<>[\](){}?=,&'"]/.test(edgeText)) {
+                const s = edgeText
+                  .replace(/"/g, "'")
+                  .replace(/\[/g, '#91;')
+                  .replace(/\]/g, '#93;')
+                  .replace(/\(/g, '#40;')
+                  .replace(/\)/g, '#41;')
+                  .replace(/\{/g, '#123;')
+                  .replace(/\}/g, '#125;')
+                  .replace(/</g, '#60;')
+                  .replace(/>/g, '#62;');
+                return `|"${s}"|`;
+              }
+              return m;
+            });
+            repairedLine += safeEdge;
+          } else {
+            // Đây là cụm node (có thể là A hoặc A & B hoặc A[Text])
+            if (part.includes('&')) {
+              const subNodes = part.split(/\s*&\s*/).map(n => this.sanitizeMermaidNode(n));
+              repairedLine += subNodes.join(' & ');
+            } else {
+              repairedLine += this.sanitizeMermaidNode(part);
+            }
+          }
+        }
+
+        return indent + repairedLine;
+      });
+
+      return repairedLines.join('\n');
+    },
+    repairClassDiagramCode(code) {
+      // Sửa generic types List<String> thành List~String~
+      return code.replace(/<([a-zA-Z0-9_,\s]+)>/g, '~$1~');
+    },
+    repairPieCode(code) {
+      const lines = code.split('\n');
+      return lines.map(line => {
+        const trimmed = line.trim();
+        if (/^\s*(?:pie|title|accTitle|accDescr)\b/i.test(trimmed)) return line;
+        const m = trimmed.match(/^([^":\n]+)\s*:\s*([+-]?\d+(?:\.\d+)?)\s*$/);
+        if (m) {
+          const key = m[1].trim();
+          const val = m[2].trim();
+          return `    "${key}" : ${val}`;
+        }
+        return line;
+      }).join('\n');
+    },
+    repairErDiagramCode(code) {
+      // Sửa kiểu dữ liệu có dấu ngoặc như VARCHAR(255) -> VARCHAR_255
+      return code.replace(/([a-zA-Z0-9_]+)\((\d+)\)/g, '$1_$2');
+    },
+    repairSequenceDiagramCode(code) {
+      const lines = code.split('\n');
+      let openBlocks = 0;
+      for (let i = 0; i < lines.length; i++) {
+        const t = lines[i].trim();
+        if (/^(loop|alt|opt|par|critical|rect)\b/i.test(t)) {
+          openBlocks++;
+        } else if (/^end\b/i.test(t)) {
+          if (openBlocks > 0) openBlocks--;
+        }
+      }
+      let res = code;
+      while (openBlocks > 0) {
+        res += '\nend';
+        openBlocks--;
+      }
+      return res;
+    },
     sanitizeMermaidCode(raw) {
       if (!raw) return '';
       let code = raw.trim();
 
-      // Chuẩn hoá các nhãn node chứa ngoặc kép phân mảnh bên trong {...}, [...], (...)
-      // Ví dụ lỗi phổ biến của LLM: E2{"+" or "-"} -> E2{'+' or '-'}, T2{"*" or "/"} -> T2{'*' or '/'}
-      code = code.replace(/([\{\[\(]+)([^\n\{\}\[\]\(\)]+)([\}\]\)]+)/g, (match, open, content, close) => {
-        const trimmed = content.trim();
-        // Nếu cả nội dung đã được bọc trọn vẹn trong 1 cặp nháy kép duy nhất: ["label"] -> giữ nguyên
-        if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-          const inner = trimmed.slice(1, -1);
-          if (!inner.includes('"')) {
-            return match;
+      // Bỏ markdown code fences nếu lọt vào nội dung
+      code = code.replace(/^```(?:mermaid)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+
+      // 1. Xử lý chuyên biệt cho biểu đồ xychart / xychart-beta
+      if (/^\s*xychart(-beta)?\b/i.test(code)) {
+        // Chuẩn hoá các nhãn trong x-axis nếu bị LLM dùng nháy đơn ['A', 'B'] -> ["A", "B"]
+        code = code.replace(/(x-axis\s*\[)([\s\S]*?)(\])/gi, (m, p1, inner, p3) => {
+          return p1 + inner.replace(/'/g, '"') + p3;
+        });
+
+        // Tìm giá trị max trong các mảng dữ liệu bar/line
+        const dataBlocks = code.match(/(?:bar|line)\s*\[([\s\S]*?)\]/gi);
+        let maxDataVal = 0;
+        if (dataBlocks) {
+          dataBlocks.forEach(block => {
+            const numbers = block.match(/[+-]?(?:\d+(?:\.\d+)?|\.\d+)/g);
+            if (numbers) {
+              numbers.forEach(n => {
+                const num = parseFloat(n);
+                if (!isNaN(num) && num > maxDataVal) maxDataVal = num;
+              });
+            }
+          });
+        }
+
+        // Kiểm tra xem y-axis có khai báo dải min --> max bị nhỏ hơn dữ liệu thực tế không
+        const yAxisRangeMatch = code.match(/(y-axis\s+(?:"[^"]*"|'[^']*')?\s*)([+-]?\d+(?:\.\d+)?)\s*-->\s*([+-]?\d+(?:\.\d+)?)/i);
+        if (yAxisRangeMatch) {
+          const declaredMax = parseFloat(yAxisRangeMatch[3]);
+          if (!isNaN(declaredMax) && maxDataVal > declaredMax) {
+            code = code.replace(yAxisRangeMatch[0], yAxisRangeMatch[1].trim());
           }
         }
-        // Nếu có chứa dấu ngoặc kép phân mảnh bên trong: chuyển các nháy kép thành nháy đơn
-        if (content.includes('"')) {
-          const fixedContent = content.replace(/"/g, "'");
-          return open + fixedContent + close;
-        }
-        return match;
-      });
+
+        return code;
+      }
+
+      // 2. Xử lý Flowchart / Graph (Bao gồm Bubble Sort, nested brackets, math operators, reserved IDs)
+      if (/^\s*(?:flowchart|graph)\b/i.test(code)) {
+        return this.repairFlowchartCode(code);
+      }
+
+      // 3. Xử lý Class Diagram
+      if (/^\s*classDiagram\b/i.test(code)) {
+        return this.repairClassDiagramCode(code);
+      }
+
+      // 4. Xử lý Pie Chart
+      if (/^\s*pie\b/i.test(code)) {
+        return this.repairPieCode(code);
+      }
+
+      // 5. Xử lý ER Diagram
+      if (/^\s*erDiagram\b/i.test(code)) {
+        return this.repairErDiagramCode(code);
+      }
+
+      // 6. Xử lý Sequence Diagram
+      if (/^\s*sequenceDiagram\b/i.test(code)) {
+        return this.repairSequenceDiagramCode(code);
+      }
 
       return code;
+    },
+    aggressiveFallbackRepairMermaid(code, errMsg) {
+      if (!code) return '';
+      let c = code;
+
+      // 1. Xoá ký tự điều khiển ẩn hoặc zero-width space
+      c = c.replace(/[\u200B-\u200D\uFEFF]/g, '');
+
+      // 2. Xoá dấu chấm phẩy ở cuối dòng
+      c = c.replace(/;\s*$/gm, '');
+
+      // 3. Nếu là flowchart mà vẫn bị lỗi nhãn dạng { ... } hoặc ( ... )
+      if (/^\s*(?:flowchart|graph)\b/i.test(c)) {
+        c = c.replace(/([a-zA-Z0-9_]+)\{([^{}\n]+)\}/g, (match, id, label) => {
+          const cleanLabel = label.replace(/"/g, "'").replace(/[<>{}[\]]/g, ' ');
+          return `${id}["${cleanLabel}"]`;
+        });
+        const lines = c.split('\n');
+        c = lines.map(line => {
+          const quotes = (line.match(/"/g) || []).length;
+          if (quotes % 2 !== 0) {
+            return line.replace(/"/g, "'");
+          }
+          return line;
+        }).join('\n');
+      }
+
+      // 4. Nếu là sequenceDiagram mà còn thiếu end
+      if (/^\s*sequenceDiagram\b/i.test(c)) {
+        c = this.repairSequenceDiagramCode(c);
+      }
+
+      return c;
     },
     async renderMermaidDiagrams() {
       if (typeof window === 'undefined') return;
@@ -1824,116 +2562,145 @@ export default {
           const existingTemp = document.getElementById(id) || document.getElementById('d' + id);
           if (existingTemp) existingTemp.remove();
 
+          let renderSuccess = false;
+          let svgCode = '';
+          let bindFunctions = null;
+
+          // PASS 1: Render với mã đã chuẩn hoá
           try {
             const renderFn = (typeof mermaid.renderAsync === 'function')
               ? mermaid.renderAsync.bind(mermaid)
               : mermaid.render.bind(mermaid);
             const res = await renderFn(id, code);
-            const svgCode = typeof res === 'string' ? res : (res && res.svg ? res.svg : '');
-            const bindFunctions = res && res.bindFunctions;
-            if (target.isConnected) {
-              target.innerHTML = svgCode;
-              target.setAttribute('data-rendered', 'true');
-              target.classList.remove('is-loading', 'has-error');
-              const previewEl = target.closest('.ur-chatbot-mermaid-preview');
-              if (previewEl) {
-                previewEl.classList.add('is-clickable');
-                previewEl.setAttribute('title', 'Nhấp để mở xem toàn màn hình (Phóng to & Di chuyển)');
-              }
-              if (typeof bindFunctions === 'function') {
-                bindFunctions(target);
-              }
+            svgCode = typeof res === 'string' ? res : (res && res.svg ? res.svg : '');
+            bindFunctions = res && res.bindFunctions;
+            renderSuccess = true;
+          } catch (firstErr) {
+            // Xoá ngay element rác mà Mermaid có thể đã tạo ra khi throw error
+            const errEl = document.getElementById(id) || document.getElementById('d' + id);
+            if (errEl) errEl.remove();
 
-              // Tự động căn chỉnh viewBox cho sơ đồ mindmap (tâm 0,0 với toạ độ âm) và sơ đồ thiếu viewBox
-              const svgEl = target.querySelector('svg');
-              if (svgEl) {
-                try {
-                  const mindmapNodes = svgEl.querySelectorAll('.mindmap-node');
-                  if (mindmapNodes && mindmapNodes.length > 0) {
-                    // Sơ đồ Mindmap: toạ độ phân tán từ tâm (0,0) với translate(x,y)
-                    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                    mindmapNodes.forEach(node => {
-                      let tx = 0, ty = 0;
-                      const tf = node.getAttribute('transform') || '';
-                      const m = tf.match(/translate\(\s*([-\d.]+)(?:\s*,\s*([-\d.]+))?\s*\)/);
-                      if (m) {
-                        tx = parseFloat(m[1]) || 0;
-                        ty = parseFloat(m[2]) || 0;
-                      }
-                      let bx = -40, by = -20, bw = 80, bh = 40;
-                      try {
-                        const b = node.getBBox();
-                        if (b && b.width > 0) {
-                          bx = b.x; by = b.y; bw = b.width; bh = b.height;
-                        }
-                      } catch (e) {}
-                      minX = Math.min(minX, tx + bx);
-                      minY = Math.min(minY, ty + by);
-                      maxX = Math.max(maxX, tx + bx + bw);
-                      maxY = Math.max(maxY, ty + by + bh);
-                    });
+            // PASS 2: Thử nghiệm Fallback Repair nâng cao
+            try {
+              const fallbackCode = this.aggressiveFallbackRepairMermaid(code, firstErr.message);
+              if (fallbackCode) {
+                const fbId = id + '_fb';
+                const fbRenderFn = (typeof mermaid.renderAsync === 'function')
+                  ? mermaid.renderAsync.bind(mermaid)
+                  : mermaid.render.bind(mermaid);
+                const fbRes = await fbRenderFn(fbId, fallbackCode);
+                svgCode = typeof fbRes === 'string' ? fbRes : (fbRes && fbRes.svg ? fbRes.svg : '');
+                bindFunctions = fbRes && fbRes.bindFunctions;
+                renderSuccess = true;
+              }
+            } catch (secondErr) {
+              const fbErrEl = document.getElementById(id + '_fb') || document.getElementById('d' + id + '_fb');
+              if (fbErrEl) fbErrEl.remove();
+            }
+          }
 
-                    if (minX !== Infinity && maxX !== -Infinity) {
-                      const pad = 36;
-                      const vbX = Math.round(minX - pad);
-                      const vbY = Math.round(minY - pad);
-                      const vbW = Math.round((maxX - minX) + pad * 2);
-                      const vbH = Math.round((maxY - minY) + pad * 2);
-                      svgEl.setAttribute('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`);
-                      svgEl.setAttribute('width', '100%');
-                      svgEl.style.maxWidth = `${Math.min(760, Math.max(480, vbW))}px`;
-                      svgEl.style.height = 'auto';
-                      svgEl.style.overflow = 'visible';
+          if (renderSuccess && target.isConnected) {
+            target.innerHTML = svgCode;
+            target.setAttribute('data-rendered', 'true');
+            target.classList.remove('is-loading', 'has-error');
+            const previewEl = target.closest('.ur-chatbot-mermaid-preview');
+            if (previewEl) {
+              previewEl.classList.add('is-clickable');
+              previewEl.setAttribute('title', 'Nhấp để mở xem toàn màn hình (Phóng to & Di chuyển)');
+            }
+            if (typeof bindFunctions === 'function') {
+              bindFunctions(target);
+            }
+
+            // Tự động căn chỉnh viewBox cho sơ đồ mindmap và sơ đồ thiếu viewBox
+            const svgEl = target.querySelector('svg');
+            if (svgEl) {
+              try {
+                const styleEl = svgEl.querySelector('style');
+                if (styleEl && styleEl.textContent) {
+                  styleEl.textContent = styleEl.textContent.replace(
+                    /([#a-zA-Z0-9_.-]*\.mindmap-node[^{]*?)\s+text\b/g,
+                    '$1 text, $1 foreignObject div, $1 foreignObject span, $1 .nodeLabel'
+                  );
+                }
+
+                const mindmapNodes = svgEl.querySelectorAll('.mindmap-node');
+                if (mindmapNodes && mindmapNodes.length > 0) {
+                  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                  mindmapNodes.forEach(node => {
+                    let tx = 0, ty = 0;
+                    const tf = node.getAttribute('transform') || '';
+                    const m = tf.match(/translate\(\s*([-\d.]+)(?:\s*,\s*([-\d.]+))?\s*\)/);
+                    if (m) {
+                      tx = parseFloat(m[1]) || 0;
+                      ty = parseFloat(m[2]) || 0;
                     }
-                  } else {
-                    // Các sơ đồ thông thường khác (flowchart, sequence, etc.)
-                    const bbox = svgEl.getBBox();
-                    if (bbox && bbox.width > 0 && bbox.height > 0) {
-                      const currentVb = svgEl.getAttribute('viewBox');
-                      if (!currentVb) {
-                        const pad = 16;
-                        svgEl.setAttribute(
-                          'viewBox',
-                          `${bbox.x - pad} ${bbox.y - pad} ${bbox.width + pad * 2} ${bbox.height + pad * 2}`
-                        );
-                        svgEl.style.width = '100%';
-                        svgEl.style.height = 'auto';
+                    let bx = -40, by = -20, bw = 80, bh = 40;
+                    try {
+                      const b = node.getBBox();
+                      if (b && b.width > 0) {
+                        bx = b.x; by = b.y; bw = b.width; bh = b.height;
                       }
+                    } catch (e) {}
+                    minX = Math.min(minX, tx + bx);
+                    minY = Math.min(minY, ty + by);
+                    maxX = Math.max(maxX, tx + bx + bw);
+                    maxY = Math.max(maxY, ty + by + bh);
+                  });
+
+                  if (minX !== Infinity && maxX !== -Infinity) {
+                    const pad = 36;
+                    const vbX = Math.round(minX - pad);
+                    const vbY = Math.round(minY - pad);
+                    const vbW = Math.round((maxX - minX) + pad * 2);
+                    const vbH = Math.round((maxY - minY) + pad * 2);
+                    svgEl.setAttribute('viewBox', `${vbX} ${vbY} ${vbW} ${vbH}`);
+                    svgEl.setAttribute('width', '100%');
+                    svgEl.style.maxWidth = `${Math.min(760, Math.max(480, vbW))}px`;
+                    svgEl.style.height = 'auto';
+                    svgEl.style.overflow = 'visible';
+                  }
+                } else {
+                  const bbox = svgEl.getBBox();
+                  if (bbox && bbox.width > 0 && bbox.height > 0) {
+                    const currentVb = svgEl.getAttribute('viewBox');
+                    if (!currentVb) {
+                      const pad = 16;
+                      svgEl.setAttribute(
+                        'viewBox',
+                        `${bbox.x - pad} ${bbox.y - pad} ${bbox.width + pad * 2} ${bbox.height + pad * 2}`
+                      );
+                      svgEl.style.width = '100%';
+                      svgEl.style.height = 'auto';
                     }
                   }
-                } catch (e) {
-                  // getBBox fallback
                 }
+              } catch (e) {
+                // getBBox fallback
               }
             }
-          } catch (err) {
-            const tempEl = document.getElementById(id) || document.getElementById('d' + id);
-            if (tempEl) tempEl.remove();
+          } else if (!renderSuccess && !this.isStreaming && target.isConnected) {
+            target.setAttribute('data-rendered', 'true');
+            target.classList.add('has-error');
+            target.innerHTML = `<div class="ur-chatbot-mermaid-error">
+              <div class="ur-chatbot-mermaid-error-title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <span>Diagram syntax is incomplete or has errors</span>
+              </div>
+              <div class="ur-chatbot-mermaid-error-desc">Source code view has been opened automatically below.</div>
+            </div>`;
 
-            if (!this.isStreaming && target.isConnected) {
-              target.setAttribute('data-rendered', 'true');
-              target.classList.add('has-error');
-              target.innerHTML = `<div class="ur-chatbot-mermaid-error">
-                <div class="ur-chatbot-mermaid-error-title">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="12" y1="8" x2="12" y2="12"></line>
-                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                  </svg>
-                  <span>Diagram syntax is incomplete or has errors</span>
-                </div>
-                <div class="ur-chatbot-mermaid-error-desc">Source code view has been opened automatically below.</div>
-              </div>`;
-
-              const card = target.closest('.ur-chatbot-mermaid-card');
-              if (card) {
-                const codeView = card.querySelector('.ur-chatbot-mermaid-code-view');
-                const toggleBtn = card.querySelector('.btn-toggle-mermaid-code');
-                if (codeView) codeView.style.display = 'block';
-                if (toggleBtn) {
-                  toggleBtn.classList.add('is-active');
-                  toggleBtn.title = 'Hide source code';
-                }
+            const card = target.closest('.ur-chatbot-mermaid-card');
+            if (card) {
+              const codeView = card.querySelector('.ur-chatbot-mermaid-code-view');
+              const toggleBtn = card.querySelector('.btn-toggle-mermaid-code');
+              if (codeView) codeView.style.display = 'block';
+              if (toggleBtn) {
+                toggleBtn.classList.add('is-active');
               }
             }
           }
@@ -2582,14 +3349,40 @@ export default {
         if (!raw) return;
         const data = JSON.parse(raw);
         if (data && Array.isArray(data.messageList) && data.messageList.length > 0) {
-          this.messageList = data.messageList.map(m => ({
-            ...m,
-            isStreaming: false,
-            html: m.sender === 'bot' ? this.renderHtml(m.text || '', false) : ''
-          }));
+          this.messageList = data.messageList.map(m => {
+            const hasVersions = Array.isArray(m.versions) && m.versions.length > 0;
+            const currentIdx = typeof m.currentVersionIdx === 'number' ? m.currentVersionIdx : 0;
+            const activeVersion = hasVersions && m.versions[currentIdx] ? m.versions[currentIdx] : null;
+            const activeText = activeVersion ? activeVersion.text : (m.text || '');
+            const activeThinking = activeVersion ? (activeVersion.thinking || '') : (m.thinking || '');
+            const activeThinkingDuration = activeVersion ? (activeVersion.thinkingDuration || '') : (m.thinkingDuration || '');
+            return {
+              ...m,
+              text: activeText,
+              thinking: activeThinking,
+              thinkingDuration: activeThinkingDuration,
+              isStreaming: false,
+              html: m.sender === 'bot' ? this.renderHtml(activeText, false) : '',
+              versions: hasVersions ? m.versions : (m.sender === 'bot' && activeText ? [{
+                text: activeText,
+                html: this.renderHtml(activeText, false),
+                responseTime: m.responseTime || '',
+                lang: m.lang || '',
+                thinking: activeThinking,
+                thinkingDuration: activeThinkingDuration
+              }] : []),
+              currentVersionIdx: currentIdx
+            };
+          });
         }
         if (data && Array.isArray(data.apiMessagesHistory) && data.apiMessagesHistory.length > 0) {
           this.apiMessagesHistory = data.apiMessagesHistory;
+        }
+        if (data && data.effectiveModel) {
+          this.effectiveModel = data.effectiveModel;
+        }
+        if (data && typeof data.isThinkingActive === 'boolean') {
+          this.isThinkingActive = data.isThinkingActive;
         }
       } catch (err) {
         console.warn('[UrChatbot] Không thể nạp localStorage:', err);
@@ -2604,7 +3397,13 @@ export default {
           sender: m.sender,
           text: m.text,
           responseTime: m.responseTime || '',
-          isError: !!m.isError
+          isError: !!m.isError,
+          isResetNotice: !!m.isResetNotice,
+          images: m.images || undefined,
+          thinking: m.thinking || '',
+          thinkingDuration: m.thinkingDuration || '',
+          versions: m.versions || undefined,
+          currentVersionIdx: m.currentVersionIdx !== undefined ? m.currentVersionIdx : undefined
         }));
 
         // Giới hạn maxStoredMessages (mặc định 40 tin nhắn gần nhất)
@@ -2624,7 +3423,9 @@ export default {
               version: 1,
               updatedAt: Date.now(),
               messageList: msgsToSave,
-              apiMessagesHistory: apiHistoryToSave
+              apiMessagesHistory: apiHistoryToSave,
+              effectiveModel: this.effectiveModel,
+              isThinkingActive: this.isThinkingActive
             });
 
             // Nếu kích thước chuỗi vượt quá 1.5MB (~3MB UTF-16) thì chủ động cắt tỉa bớt tin nhắn cũ
@@ -2953,22 +3754,299 @@ export default {
         el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
       });
     },
-    regenerateMessage(msg) {
-      if (this.isStreaming || this.isLoading) return;
-      const idx = this.messageList.indexOf(msg);
-      if (idx > 0 && this.messageList[idx - 1].sender === 'user') {
-        const userPrompt = this.messageList[idx - 1].text;
-        this.messageList.splice(idx, 1);
-        this.inputMsg = userPrompt;
-        this.autoResizeInput();
-        this.handleSendMessage();
+    syncActiveVersionToHistory(botMsgObj) {
+      if (!botMsgObj || !botMsgObj.text) return;
+      let botIndex = 0;
+      for (let i = 0; i < this.messageList.length; i++) {
+        const m = this.messageList[i];
+        if (m === botMsgObj) break;
+        if (m.sender === 'bot' && !m.isResetNotice && m.text) {
+          botIndex++;
+        }
       }
+
+      let historyBotIndex = 0;
+      for (let j = 0; j < this.apiMessagesHistory.length; j++) {
+        if (this.apiMessagesHistory[j].role === 'assistant') {
+          if (historyBotIndex === botIndex) {
+            this.apiMessagesHistory[j].content = botMsgObj.text;
+            return;
+          }
+          historyBotIndex++;
+        }
+      }
+    },
+    getMsgVersionsCount(msg) {
+      if (!msg) return 0;
+      if (msg.versions && Array.isArray(msg.versions) && msg.versions.length > 0) {
+        return msg.versions.length;
+      }
+      return 1;
+    },
+    getMsgCurrentVersionIndex(msg) {
+      if (!msg || typeof msg.currentVersionIdx !== 'number') return 0;
+      return msg.currentVersionIdx;
+    },
+    setMsgVersion(msg, targetIndex) {
+      if (!msg || !msg.versions || targetIndex < 0 || targetIndex >= msg.versions.length) return;
+      this.$set(msg, 'currentVersionIdx', targetIndex);
+      const v = msg.versions[targetIndex];
+      this.$set(msg, 'text', v.text);
+      this.$set(msg, 'html', v.html || this.renderHtml(v.text, false));
+      this.$set(msg, 'responseTime', v.responseTime || '');
+      this.$set(msg, 'lang', v.lang || detectLanguage(v.text));
+      this.$set(msg, 'thinking', v.thinking || '');
+      this.$set(msg, 'thinkingDuration', v.thinkingDuration || '');
+      this.syncActiveVersionToHistory(msg);
+      this.saveToLocalStorage();
+      this.$nextTick(() => {
+        this.scheduleMermaidRender();
+      });
+    },
+    prevMsgVersion(msg) {
+      const cur = this.getMsgCurrentVersionIndex(msg);
+      if (cur > 0) {
+        this.setMsgVersion(msg, cur - 1);
+      }
+    },
+    nextMsgVersion(msg) {
+      const cur = this.getMsgCurrentVersionIndex(msg);
+      if (cur < this.getMsgVersionsCount(msg) - 1) {
+        this.setMsgVersion(msg, cur + 1);
+      }
+    },
+    isThinkingCollapsed(msg) {
+      if (!msg) return true;
+      if (this.thinkingCollapseMap[msg.id] !== undefined) {
+        return !!this.thinkingCollapseMap[msg.id];
+      }
+      // Trong khi bot đang streaming: mở ra để người dùng theo dõi quá trình suy nghĩ
+      if (msg.isStreaming) {
+        return false;
+      }
+      // Sau khi AI đã hoàn tất câu trả lời: mặc định tự động thu gọn lại
+      return true;
+    },
+    toggleThinkingCollapse(msgOrId) {
+      const msg = (typeof msgOrId === 'object' && msgOrId)
+        ? msgOrId
+        : (this.messageList || []).find(m => m.id === msgOrId);
+      const msgId = msg ? msg.id : msgOrId;
+      if (!msgId) return;
+      const current = this.isThinkingCollapsed(msg);
+      this.$set(this.thinkingCollapseMap, msgId, !current);
+    },
+    getThinkingHeaderLabel(msg) {
+      if (!msg) return 'Thinking...';
+      if (msg.isStreaming && !msg.text) {
+        return 'Thinking...';
+      }
+      const dur = msg.thinkingDuration || (msg.responseTime ? msg.responseTime.replace(/\..*$/, 's') : '5s');
+      return `Thought for ${dur}`;
+    },
+    getThinkingSteps(text) {
+      if (!text || typeof text !== 'string') return [];
+      const clean = text.replace(/\r\n/g, '\n').trim();
+      if (!clean) return [];
+
+      const rawBlocks = clean.split(/\n{2,}/);
+      const steps = [];
+
+      for (let i = 0; i < rawBlocks.length; i++) {
+        let b = rawBlocks[i].trim();
+        if (!b) continue;
+
+        // Bỏ ký tự gạch đầu dòng Markdown nếu có
+        b = b.replace(/^[\*\-\•]\s+/, '').replace(/^\d+\.\s+/, '');
+
+        // 1. Format **Title** Description hoặc **Title**\nDescription
+        const boldMatch = b.match(/^\*\*([^*]+)\*\*[:\s]*([\s\S]*)$/);
+        if (boldMatch) {
+          steps.push({
+            title: boldMatch[1].trim(),
+            desc: boldMatch[2].trim()
+          });
+          continue;
+        }
+
+        // 2. Format ### Title\nDescription
+        const headingMatch = b.match(/^#{1,4}\s+([^\n]+)\n?([\s\S]*)$/);
+        if (headingMatch) {
+          steps.push({
+            title: headingMatch[1].trim(),
+            desc: headingMatch[2].trim()
+          });
+          continue;
+        }
+
+        // 3. Format Title: Description (Title ngắn <= 45 ký tự)
+        const colonMatch = b.match(/^([^:\n]{3,45}):\s+([\s\S]+)$/);
+        if (colonMatch) {
+          steps.push({
+            title: colonMatch[1].trim(),
+            desc: colonMatch[2].trim()
+          });
+          continue;
+        }
+
+        // 4. Khối nhiều dòng và dòng đầu tiên ngắn (< 50 ký tự), không có dấu chấm kết thúc
+        const lines = b.split('\n').map(l => l.trim()).filter(Boolean);
+        if (lines.length > 1 && lines[0].length <= 50 && !/[.?!]$/.test(lines[0])) {
+          steps.push({
+            title: lines[0],
+            desc: lines.slice(1).join('\n')
+          });
+          continue;
+        }
+
+        // 5. Nếu là đoạn văn, tách câu đầu tiên làm title nếu câu ngắn (< 55 ký tự)
+        const periodMatch = b.match(/^([^\.\?\!]{5,55}[\.\?\!])\s+([\s\S]+)$/);
+        if (periodMatch) {
+          steps.push({
+            title: periodMatch[1].trim(),
+            desc: periodMatch[2].trim()
+          });
+          continue;
+        }
+
+        // 6. Fallback
+        if (b.length <= 45) {
+          steps.push({ title: b, desc: '' });
+        } else {
+          steps.push({ title: '', desc: b });
+        }
+      }
+
+      return steps;
+    },
+    extractSuggestionsFromText(botMsgObj) {
+      if (!botMsgObj || !botMsgObj.text) return;
+      const rawText = botMsgObj.text;
+
+      // 1. Regex tìm khối ```json { ... "questions": [...] ... } ``` ở cuối văn bản (có thể có tiêu đề Gợi ý / Suggestions phía trước)
+      const jsonBlockRegex = /(?:(?:\n|^)(?:[#*_\-\s]*(?:Gợi ý|Gợi ý tiếp theo|Follow-up questions?|Các câu hỏi gợi ý)[#*_\-\s:]*\n?)?)```(?:json)?\s*(\{[\s\S]*?"questions"\s*:\s*\[[\s\S]*?\}\s*)\s*```\s*$/i;
+      let match = rawText.match(jsonBlockRegex);
+
+      // 2. Hoặc tìm khối JSON thuần { "title": ..., "questions": [...] } ở cuối văn bản
+      if (!match) {
+        const rawJsonRegex = /(?:(?:\n|^)(?:[#*_\-\s]*(?:Gợi ý|Gợi ý tiếp theo|Follow-up questions?|Các câu hỏi gợi ý)[#*_\-\s:]*\n?)?)(\{[\s\S]*?"questions"\s*:\s*\[[\s\S]*?\}\s*)$/i;
+        match = rawText.match(rawJsonRegex);
+      }
+
+      if (match) {
+        try {
+          const jsonStr = match[1].trim();
+          const parsed = JSON.parse(jsonStr);
+          if (Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+            this.suggestedPrompts = parsed.questions.slice(0, 3).map(q => String(q).trim()).filter(Boolean);
+            if (parsed.title && typeof parsed.title === 'string' && parsed.title.trim()) {
+              this.suggestedTitle = parsed.title.trim();
+            }
+
+            // Xóa bỏ đoạn mã JSON thô này khỏi câu trả lời của bot
+            const cleanedText = rawText.substring(0, match.index).trimEnd();
+            if (cleanedText) {
+              this.$set(botMsgObj, 'text', cleanedText);
+              this.$set(botMsgObj, 'html', this.renderHtml(cleanedText, false));
+              if (botMsgObj.versions && botMsgObj.versions[botMsgObj.currentVersionIdx]) {
+                botMsgObj.versions[botMsgObj.currentVersionIdx].text = cleanedText;
+                botMsgObj.versions[botMsgObj.currentVersionIdx].html = this.renderHtml(cleanedText, false);
+              }
+            }
+          }
+        } catch (e) {
+          // ignore parse error
+        }
+      }
+    },
+    regenerateMessage(msg) {
+      if (this.isStreaming || this.isLoading || !msg) return;
+
+      const msgIdx = this.messageList.indexOf(msg);
+      if (msgIdx < 0) return;
+
+      // Tìm câu hỏi của user ngay trước tin nhắn bot này
+      let userMsg = null;
+      for (let i = msgIdx - 1; i >= 0; i--) {
+        if (this.messageList[i].sender === 'user') {
+          userMsg = this.messageList[i];
+          break;
+        }
+      }
+      if (!userMsg) return;
+
+      // Khởi tạo hoặc đồng bộ versions hiện tại
+      if (!msg.versions || !Array.isArray(msg.versions) || msg.versions.length === 0) {
+        this.$set(msg, 'versions', [
+          {
+            text: msg.text,
+            html: msg.html || this.renderHtml(msg.text, false),
+            responseTime: msg.responseTime || '',
+            lang: msg.lang || '',
+            thinking: msg.thinking || '',
+            thinkingDuration: msg.thinkingDuration || ''
+          }
+        ]);
+        this.$set(msg, 'currentVersionIdx', 0);
+      } else {
+        const curIdx = msg.currentVersionIdx || 0;
+        if (msg.versions[curIdx]) {
+          msg.versions[curIdx] = {
+            text: msg.text,
+            html: msg.html || this.renderHtml(msg.text, false),
+            responseTime: msg.responseTime || '',
+            lang: msg.lang || '',
+            thinking: msg.thinking || '',
+            thinkingDuration: msg.thinkingDuration || ''
+          };
+        }
+      }
+
+      // Xây dựng ngữ cảnh hội thoại từ đầu đến userMsg
+      const payloadMessages = [{ role: 'system', content: this.systemPrompt }];
+      for (let i = 0; i < this.messageList.length; i++) {
+        const item = this.messageList[i];
+        if (item === msg) break;
+        if (item.sender === 'user') {
+          if (item.images && item.images.length > 0) {
+            const content = [{ type: 'text', text: item.text || 'Hãy phân tích chi tiết hình ảnh đính kèm này.' }];
+            for (let k = 0; k < item.images.length; k++) {
+              const aImg = item.images[k];
+              const imgUrl = (this.shouldStoreFile && aImg.url) ? aImg.url : (aImg.base64 || aImg.url);
+              content.push({ type: 'image_url', image_url: { url: imgUrl } });
+            }
+            payloadMessages.push({ role: 'user', content: content });
+          } else if (item.text) {
+            payloadMessages.push({ role: 'user', content: item.text });
+          }
+        } else if (item.sender === 'bot' && !item.isResetNotice && item.text) {
+          payloadMessages.push({ role: 'assistant', content: item.text });
+        }
+      }
+
+      // Áp dụng giới hạn lịch sử
+      let finalHistory = payloadMessages.slice(1);
+      if (this.historyLimit > 0) {
+        finalHistory = finalHistory.slice(-this.historyLimit);
+      }
+      const finalPayload = [payloadMessages[0], ...finalHistory];
+
+      // Đặt lại dữ liệu hiển thị của bot message để stream phiên bản mới
+      this.$set(msg, 'text', '');
+      this.$set(msg, 'html', '');
+      this.$set(msg, 'thinking', '');
+      this.$set(msg, 'thinkingDuration', '');
+      this.$set(msg, 'responseTime', null);
+      this.$set(msg, 'isError', false);
+
+      this.streamChatResponse(msg, finalPayload, true);
     },
     sendSuggestedPrompt(promptText) {
       if (this.isLoading || this.isStreaming) return;
       this.inputMsg = promptText;
       this.autoResizeInput();
       this.suggestedPrompts = [];
+      this.suggestedTitle = '';
       this.handleSendMessage();
     },
     clearMessages() {
@@ -2978,14 +4056,17 @@ export default {
       this.inputMsg = '';
       this.autoResizeInput();
       this.suggestedPrompts = [];
+      this.suggestedTitle = '';
       this.userMsgExpandedMap = {};
       this.userMsgCollapsibleMap = {};
+      this.thinkingCollapseMap = {};
       this.messageList = [
         {
           id: Date.now(),
           sender: 'bot',
           text: 'Conversation has been reset! 🌌',
-          html: this.renderHtml('Conversation has been reset! 🌌', false)
+          html: this.renderHtml('Conversation has been reset! 🌌', false),
+          isResetNotice: true
         }
       ];
       this.initHistory();
@@ -3010,6 +4091,25 @@ export default {
       }
     },
     async callChatApi(payload, signal) {
+      const endpoint = this.apiUrl || '/api/chat';
+
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload),
+          signal
+        });
+
+        return response;
+      } catch (err) {
+        if (err.name === 'AbortError') throw err;
+        throw err || new Error('Unable to connect to Chat API service');
+      }
+    },
+    async callChatApi_old(payload, signal) {
       const endpoints = this.apiUrl
         ? [this.apiUrl]
         : ['/api/chat', 'http://localhost:3001/api/chat'];
@@ -3035,26 +4135,183 @@ export default {
       }
       throw lastError || new Error('Unable to connect to Chat API service');
     },
+    onDragOver(e) {
+      if (!this.canAttachFile) return;
+      this.isDraggingOver = true;
+    },
+    onDragEnter(e) {
+      if (!this.canAttachFile) return;
+      this.isDraggingOver = true;
+    },
+    onDragLeave(e) {
+      this.isDraggingOver = false;
+    },
+    onDrop(e) {
+      this.isDraggingOver = false;
+      if (!this.canAttachFile) return;
+      const files = e.dataTransfer && e.dataTransfer.files;
+      if (!files || files.length === 0) return;
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.type && file.type.indexOf('image') !== -1) {
+          this.processAndUploadImageFile(file);
+        }
+      }
+    },
+    handlePaste(e) {
+      this.autoResizeInput();
+      if (!this.canAttachFile) return;
+      const clipboardData = e.clipboardData || (window.clipboardData);
+      if (!clipboardData || !clipboardData.items) return;
+
+      const items = clipboardData.items;
+      let hasImage = false;
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.type && item.type.indexOf('image') !== -1) {
+          const file = item.getAsFile();
+          if (file) {
+            hasImage = true;
+            this.processAndUploadImageFile(file);
+          }
+        }
+      }
+
+      if (hasImage) {
+        e.preventDefault();
+      }
+    },
+    handleFileInputChange(e) {
+      const files = e.target.files;
+      if (!files || files.length === 0) return;
+      for (let i = 0; i < files.length; i++) {
+        this.processAndUploadImageFile(files[i]);
+      }
+      e.target.value = '';
+    },
+    processAndUploadImageFile(file) {
+      if (!this.canAttachFile || !file) return;
+      const tempId = 'img_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+      const reader = new FileReader();
+
+      reader.onload = (event) => {
+        const base64Data = event.target.result;
+        const imgItem = {
+          id: tempId,
+          name: file.name || ('image_' + Date.now() + '.png'),
+          preview: base64Data,
+          base64: base64Data,
+          url: '',
+          key: '',
+          uploading: false,
+          error: null
+        };
+
+        if (this.shouldStoreFile) {
+          // Khi storeFile = true: Upload lên MinIO để lấy URL S3 lưu trữ 1 ngày
+          imgItem.uploading = true;
+          this.pendingImages.push(imgItem);
+          this.uploadImageToMinio(imgItem);
+        } else {
+          // Khi storeFile = false: Gửi trực tiếp chuỗi Base64
+          imgItem.uploading = false;
+          this.pendingImages.push(imgItem);
+        }
+      };
+
+      reader.readAsDataURL(file);
+    },
+    async uploadImageToMinio(imgItem) {
+      try {
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image: imgItem.base64,
+            name: imgItem.name
+          })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || 'Lỗi upload ảnh');
+        }
+        this.$set(imgItem, 'url', data.url);
+        this.$set(imgItem, 'key', data.key);
+        this.$set(imgItem, 'uploading', false);
+      } catch (err) {
+        console.error('[UrChatbot] Lỗi upload ảnh lên MinIO:', err);
+        this.$set(imgItem, 'uploading', false);
+        this.$set(imgItem, 'error', err.message);
+      }
+    },
+    async removePendingImage(index) {
+      if (index < 0 || index >= this.pendingImages.length) return;
+      const removed = this.pendingImages.splice(index, 1)[0];
+      if (this.shouldStoreFile && removed && removed.key) {
+        try {
+          await fetch('/api/upload', {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: removed.key })
+          });
+          console.log('[UrChatbot] Đã xóa ảnh khỏi MinIO:', removed.key);
+        } catch (err) {
+          console.warn('[UrChatbot] Lỗi khi gọi xóa ảnh khỏi MinIO:', err);
+        }
+      }
+    },
     async handleSendMessage() {
       const trimmed = this.inputMsg.trim();
-      if (!trimmed || this.isLoading || this.isStreaming) return;
+      const hasImages = this.pendingImages && this.pendingImages.length > 0;
+      if ((!trimmed && !hasImages) || this.isLoading || this.isStreaming || this.isUploadingAnyImage) return;
 
       this.isErrorState = false;
 
-      // 1. Thêm tin nhắn của User
+      // 1. Sao chép và xử lý danh sách ảnh đính kèm
+      const attachedImages = [...(this.pendingImages || [])];
+      this.pendingImages = [];
+
+      // 2. Thêm tin nhắn của User
       const userMessageId = Date.now();
       this.messageList.push({
         id: userMessageId,
         sender: 'user',
-        text: trimmed
+        text: trimmed,
+        images: attachedImages
       });
+
+      // 3. Chuẩn bị payload gửi cho LLM (Vision multimodal format)
+      let apiContent;
+      if (attachedImages.length > 0) {
+        apiContent = [];
+        const questionText = trimmed || 'Hãy phân tích chi tiết hình ảnh đính kèm này.';
+        apiContent.push({ type: 'text', text: questionText });
+
+        for (let i = 0; i < attachedImages.length; i++) {
+          const aImg = attachedImages[i];
+          // Nếu storeFile=true và đã upload xong lên MinIO thì gửi URL S3, nếu không thì gửi base64
+          const imgUrl = (this.shouldStoreFile && aImg.url)
+            ? aImg.url
+            : (aImg.base64 || aImg.url);
+
+          apiContent.push({
+            type: 'image_url',
+            image_url: {
+              url: imgUrl
+            }
+          });
+        }
+      } else {
+        apiContent = trimmed;
+      }
 
       this.apiMessagesHistory.push({
         role: 'user',
-        content: trimmed
+        content: apiContent
       });
 
-      this.$emit('message', { role: 'user', content: trimmed });
+      this.$emit('message', { role: 'user', content: apiContent });
 
       this.inputMsg = '';
       this.autoResizeInput();
@@ -3063,6 +4320,7 @@ export default {
       this.isStreaming = false;
       this.requestStartTime = Date.now();
       this.suggestedPrompts = [];
+      this.suggestedTitle = '';
       this.saveToLocalStorage();
 
       // 2. NGAY LẬP TỨC thêm bong bóng tin nhắn Bot với hiệu ứng 3 chấm typing
@@ -3073,12 +4331,13 @@ export default {
         text: '',
         isStreaming: true,
         responseTime: null,
-        lang: null  // sẽ được set sau khi nhận xong nội dung
+        lang: null,
+        thinking: '',
+        versions: [],
+        currentVersionIdx: 0
       };
       this.messageList.push(botMsgObj);
       this.scrollToBottom();
-
-      this.abortController = new AbortController();
 
       // 3. Chuẩn bị danh sách messages gửi đi (áp dụng historyLimit để tiết kiệm token)
       const systemMsg = this.apiMessagesHistory[0] || { role: 'system', content: this.systemPrompt };
@@ -3088,13 +4347,25 @@ export default {
         : nonSystemHistory;
       const payloadMessages = [systemMsg, ...trimmedHistory];
 
-      // 4. Khởi tạo bong bóng nhận stream thời gian thực (đáp ứng tức thì, độ trễ cực thấp)
+      this.streamChatResponse(botMsgObj, payloadMessages, false);
+    },
+    async streamChatResponse(botMsgObj, payloadMessages, isRegeneration) {
+      this.abortController = new AbortController();
       this.$set(botMsgObj, 'html', '');
+      this.$set(botMsgObj, 'isStreaming', true);
+      this.$set(botMsgObj, 'isError', false);
+      this.isLoading = true;
+      this.isStreaming = false;
+      this.requestStartTime = Date.now();
+      this.thinkingStartTime = null;
+
+      let rawAccumulatedContent = '';
 
       try {
         const chatPayload = {
           messages: payloadMessages,
-          model: this.effectiveModel
+          model: this.effectiveModel,
+          thinking: !!(this.isCurrentModelSupportThinking && this.isThinkingActive)
         };
         if (this.knowledgeBase && typeof this.knowledgeBase === 'string' && this.knowledgeBase.trim()) {
           chatPayload.knowledgeBase = this.knowledgeBase.trim();
@@ -3131,18 +4402,59 @@ export default {
               // --- Event đặc biệt: suggestions từ tool_call của server ---
               if (Array.isArray(parsed.__suggestions__) && parsed.__suggestions__.length > 0) {
                 this.suggestedPrompts = parsed.__suggestions__;
+                this.suggestedTitle = parsed.__suggestions_title__ || '';
                 this.scrollToBottom();
                 continue;
               }
 
-              // --- Nội dung text stream bình thường (hiển thị trực tiếp realtime) ---
-              const delta = parsed.choices?.[0]?.delta?.content || '';
-              if (delta) {
+              const choice = (parsed.choices && parsed.choices[0]) || null;
+              const delta = (choice && choice.delta) || null;
+              if (!delta) continue;
+
+              // 1. Kiểm tra reasoning / thinking từ API delta
+              const reasoningDelta = delta.reasoning_content || delta.reasoning || '';
+              if (reasoningDelta) {
                 if (this.isLoading) {
                   this.isLoading = false;
                   this.isStreaming = true;
                 }
-                this.$set(botMsgObj, 'text', (botMsgObj.text || '') + delta);
+                this.thinkingStartTime = this.thinkingStartTime || Date.now();
+                this.$set(botMsgObj, 'thinking', (botMsgObj.thinking || '') + reasoningDelta);
+              }
+
+              // 2. Nội dung text stream
+              const contentDelta = delta.content || '';
+              if (contentDelta) {
+                if (this.isLoading) {
+                  this.isLoading = false;
+                  this.isStreaming = true;
+                }
+
+                if (botMsgObj.thinking && !botMsgObj.thinkingDuration) {
+                  const durSec = Math.max(1, Math.round((Date.now() - (this.thinkingStartTime || this.requestStartTime)) / 1000));
+                  this.$set(botMsgObj, 'thinkingDuration', `${durSec}s`);
+                }
+
+                rawAccumulatedContent += contentDelta;
+
+                // Xử lý các model gửi thẻ suy nghĩ <think>...</think> trực tiếp trong content
+                if (rawAccumulatedContent.indexOf('<think>') !== -1) {
+                  const thinkStart = rawAccumulatedContent.indexOf('<think>') + 7;
+                  const thinkEnd = rawAccumulatedContent.indexOf('</think>');
+                  if (thinkEnd !== -1) {
+                    const extractedThinking = rawAccumulatedContent.substring(thinkStart, thinkEnd).trim();
+                    const mainText = rawAccumulatedContent.substring(thinkEnd + 8).trimStart();
+                    this.$set(botMsgObj, 'thinking', extractedThinking);
+                    this.$set(botMsgObj, 'text', mainText);
+                  } else {
+                    const currentThinking = rawAccumulatedContent.substring(thinkStart);
+                    this.$set(botMsgObj, 'thinking', currentThinking);
+                    this.$set(botMsgObj, 'text', '');
+                  }
+                } else {
+                  this.$set(botMsgObj, 'text', (botMsgObj.text || '') + contentDelta);
+                }
+
                 this.throttleUpdateHtml(botMsgObj);
               }
             } catch (e) {
@@ -3151,8 +4463,8 @@ export default {
           }
         }
 
-        // Stream network kết thúc: hoàn tất hiển thị và trigger Mermaid ngay lập tức
-        this.finishStream(botMsgObj);
+        // Stream network kết thúc: hoàn tất hiển thị và trigger Mermaid
+        this.finishStream(botMsgObj, isRegeneration);
       } catch (err) {
         if (this.typingTimer) {
           clearInterval(this.typingTimer);
@@ -3173,7 +4485,7 @@ export default {
           return;
         }
 
-        console.error('[UrChatbot] Lỗi stream Groq:', err);
+        console.error('[UrChatbot] Lỗi stream chat:', err);
         this.isLoading = false;
         this.isStreaming = false;
         this.isErrorState = true;
@@ -3846,32 +5158,6 @@ export default {
       border-radius: 18px;
       border-bottom-right-radius: 4px;
       box-shadow: 0 1px 4px rgba(15, 23, 42, 0.05);
-
-      // Lớp 1: điền màu bubble ra ngoài tạo hình đuôi
-      &::before {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        right: -10px;
-        width: 16px;
-        height: 20px;
-        background: #eef5fc;
-        border-bottom-left-radius: 16px;
-        pointer-events: none;
-      }
-
-      // Lớp 2: "khoét" cung tròn bằng màu nền chat body
-      &::after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        right: -24px;
-        width: 16px;
-        height: 20px;
-        background: #f8fafc; // chat body bg
-        border-bottom-left-radius: 12px;
-        pointer-events: none;
-      }
     }
 
     &.ur-chatbot-msg-bot,
@@ -3883,32 +5169,6 @@ export default {
       border-bottom-left-radius: 4px;
       border: 1px solid #e2e8f0;
       box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
-
-      // Lớp 1: điền màu trắng ra ngoài tạo hình đuôi
-      &::before {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: -10px;
-        width: 16px;
-        height: 20px;
-        background: #ffffff;
-        border-bottom-right-radius: 16px;
-        pointer-events: none;
-      }
-
-      // Lớp 2: "khoét" cung tròn bằng màu nền chat body
-      &::after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: -24px;
-        width: 16px;
-        height: 20px;
-        background: #f8fafc; // chat body bg
-        border-bottom-right-radius: 12px;
-        pointer-events: none;
-      }
     }
 
     &.ur-chatbot-msg-error,
@@ -4024,6 +5284,99 @@ export default {
     position: relative;
   }
 
+  /* ---------------------------------------------------------
+     KHỐI SUY NGHĨ (THINKING / REASONING BLOCK) - MODERN LIST STYLE
+     --------------------------------------------------------- */
+  .ur-chatbot-thinking-block {
+    margin-bottom: 14px;
+    font-size: 13px;
+    user-select: text;
+    transition: all 0.2s ease;
+
+    &.is-collapsed {
+      margin-bottom: 8px;
+    }
+  }
+
+  .ur-chatbot-thinking-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    user-select: none;
+    padding: 2px 0;
+    color: #0284c7;
+    font-weight: 600;
+    font-size: 12.5px;
+    line-height: 1.4;
+    transition: opacity 0.15s ease, color 0.15s ease;
+
+    &:hover {
+      opacity: 0.85;
+    }
+
+    .ur-chatbot-thinking-title {
+      letter-spacing: 0.2px;
+    }
+
+    .ur-chatbot-thinking-chevron {
+      transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+      color: #64748b;
+      flex-shrink: 0;
+
+      &.is-collapsed {
+        transform: rotate(180deg);
+      }
+    }
+  }
+
+  .ur-chatbot-thinking-content {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 4px 0 6px 2px;
+  }
+
+  .ur-chatbot-thinking-step-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .ur-chatbot-thinking-bullet {
+    color: #64748b;
+    font-size: 16px;
+    line-height: 1.25;
+    user-select: none;
+    flex-shrink: 0;
+  }
+
+  .ur-chatbot-thinking-step-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ur-chatbot-thinking-step-title {
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 1.4;
+    color: #0f172a;
+    letter-spacing: 0.15px;
+  }
+
+  .ur-chatbot-thinking-step-desc {
+    font-size: 12.5px;
+    line-height: 1.55;
+    color: #64748b;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
   .ur-chatbot-actions-toolbar,
   .msg-actions-toolbar {
     display: flex;
@@ -4033,6 +5386,50 @@ export default {
     padding-top: 6px;
     border-top: 1px solid #f1f5f9;
     user-select: none;
+  }
+
+  /* ---------------------------------------------------------
+     NÚT PHÂN TRANG PHIÊN BẢN CÂU TRẢ LỜI (< 1 / 2 >)
+     --------------------------------------------------------- */
+  .ur-chatbot-version-nav {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    margin-right: 4px;
+    user-select: none;
+  }
+
+  .ur-chatbot-btn-version-nav {
+    background: transparent;
+    border: none;
+    color: #8c959f;
+    padding: 3px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+
+    &:hover:not(:disabled) {
+      background: #f1f5f9;
+      color: #1e293b;
+    }
+
+    &:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+  }
+
+  .ur-chatbot-version-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    padding: 0 3px;
+    letter-spacing: 0.3px;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    white-space: nowrap;
   }
 
   .ur-chatbot-btn-action,
@@ -4090,22 +5487,22 @@ export default {
   .ur-chatbot-btn-scroll-bottom,
   .btn-scroll-bottom {
     position: absolute;
-    bottom: 70px;
+    bottom: calc(100% + 10px);
     left: 50%;
     transform: translateX(-50%);
     background: #ffffff;
     border: 1px solid #d0d7de;
     border-radius: 50% !important;
-    width: 36px !important;
-    height: 36px !important;
-    min-width: 36px !important;
-    min-height: 36px !important;
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     color: #57606a;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
     z-index: 25;
     transition: all 0.2s cubic-bezier(0.34, 1.25, 0.64, 1);
     flex-shrink: 0;
@@ -4165,6 +5562,24 @@ export default {
     z-index: 6;
   }
 
+  .ur-chatbot-suggested-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+    padding-left: 2px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #475569;
+    line-height: 1.4;
+    user-select: text;
+
+    .ur-chatbot-suggested-title-icon {
+      flex-shrink: 0;
+      color: #0284c7;
+    }
+  }
+
   .ur-chatbot-suggested-track,
   .suggested-prompts-track {
     display: flex;
@@ -4221,137 +5636,527 @@ export default {
   }
 
   /* ---------------------------------------------------------
-     9. CHAT FOOTER & INPUT
+     8b. ATTACHED IMAGES (USER BUBBLE)
+     --------------------------------------------------------- */
+  .ur-chatbot-user-imgs-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+
+    .ur-chatbot-user-img-card {
+      position: relative;
+      width: 58px;
+      height: 58px;
+      border-radius: 8px;
+      overflow: hidden;
+      cursor: pointer;
+      border: 1px solid #cbe0fa;
+      background: #ffffff;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05);
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+
+      &:hover {
+        transform: translateY(-1px) scale(1.03);
+        border-color: #93c5fd;
+        box-shadow: 0 3px 8px rgba(2, 132, 199, 0.15);
+      }
+
+      img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+    }
+  }
+
+  /* ---------------------------------------------------------
+     9. CHAT FOOTER & GEMINI-STYLE INPUT CARD
      --------------------------------------------------------- */
   .ur-chatbot-footer,
   .chat-footer {
-    padding: 10px 14px 12px 14px;
+    position: relative;
+    padding: 10px 14px 14px 14px;
     background-color: #ffffff;
     border-top: 1px solid #e2e8f0;
     border-radius: 0 0 12px 12px;
     display: flex;
-    align-items: flex-end;
-    gap: 8px;
+    flex-direction: column;
     z-index: 10;
     margin: 0;
+    box-sizing: border-box;
+    transition: background-color 0.2s ease;
 
-    .ur-chatbot-input,
-    input,
-    textarea {
-      flex: 1;
-      padding: 9px 14px !important;
-      background-color: #f8fafc !important;
-      border: 1px solid #d0d7de !important;
-      border-radius: 8px !important;
-      color: #0f172a !important;
-      font-size: 13px !important;
-      line-height: 1.5 !important;
-      outline: none !important;
-      transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
-      font-family: inherit !important;
-      resize: none !important;
-      min-height: 38px !important;
-      max-height: 120px !important;
-      tab-size: 2;
-      white-space: pre-wrap;
-      word-break: break-word;
-      overflow-y: hidden;
-      box-sizing: border-box !important;
-
-      &:focus {
+    &.is-dragover {
+      .ur-chatbot-input-card {
         border-color: #0284c7 !important;
-        box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12) !important;
-        background-color: #ffffff !important;
+        border-style: dashed !important;
+        background-color: #f0f9ff !important;
+        box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.15) !important;
+      }
+    }
+
+    .ur-chatbot-input-card {
+      background: #f8fafc;
+      border: 1px solid #d0d7de;
+      border-radius: 20px;
+      padding: 10px 14px 8px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+
+      &:focus-within {
+        background: #ffffff;
+        border-color: #0284c7;
+        box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.12);
       }
 
-      &::placeholder {
-        color: #94a3b8;
+      .ur-chatbot-attachments-strip {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding-bottom: 4px;
+        animation: ucbFadeSlideDown 0.18s cubic-bezier(0.16, 1, 0.3, 1);
       }
 
-      &:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-      }
+      .ur-chatbot-thumb-box {
+        position: relative;
+        width: 48px;
+        height: 48px;
+        border-radius: 8px;
+        background: #ffffff;
+        border: 1px solid #d0d7de;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        overflow: hidden;
+        flex-shrink: 0;
+        transition: transform 0.15s ease, border-color 0.15s ease;
 
-      scrollbar-width: thin;
-      scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
-
-      &::-webkit-scrollbar {
-        width: 6px;
-      }
-      &::-webkit-scrollbar-track {
-        background: transparent;
-      }
-      &::-webkit-scrollbar-thumb {
-        background: rgba(148, 163, 184, 0.5);
-        border-radius: 6px;
         &:hover {
-          background: rgba(100, 116, 139, 0.8);
+          transform: translateY(-1px);
+          border-color: #0284c7;
+        }
+
+        &.is-uploading {
+          border-style: dashed;
+          border-color: #0284c7;
+        }
+
+        &.is-error {
+          border-color: #ef4444;
+          box-shadow: 0 1px 4px rgba(239, 68, 68, 0.2);
+        }
+
+        .ur-chatbot-thumb-img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          display: block;
+          cursor: pointer;
+        }
+
+        .ur-chatbot-thumb-loader {
+          position: absolute;
+          inset: 0;
+          background: rgba(255, 255, 255, 0.75);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: #0284c7;
+
+          .ur-chatbot-thumb-spin-icon {
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+          }
+        }
+
+        .ur-chatbot-thumb-btn-remove {
+          position: absolute;
+          top: 2px;
+          right: 2px;
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: rgba(239, 68, 68, 0.92);
+          color: #ffffff;
+          border: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+          padding: 0;
+          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+          transition: transform 0.15s ease, background 0.15s ease;
+          z-index: 5;
+
+          &:hover:not(:disabled) {
+            background: #dc2626;
+            transform: scale(1.15);
+          }
+
+          &:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+          }
         }
       }
-    }
-  }
 
-  .ur-chatbot-btn-send,
-  .btn-send {
-    background: linear-gradient(135deg, #0284c7, #0369a1) !important;
-    border: none !important;
-    color: #ffffff !important;
-    width: 38px !important;
-    height: 38px !important;
-    min-width: 38px !important;
-    max-width: 38px !important;
-    min-height: 38px !important;
-    max-height: 38px !important;
-    border-radius: 8px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-    padding: 0 !important;
-    margin: 0 !important;
-    line-height: 1 !important;
+      .ur-chatbot-input,
+      input,
+      textarea {
+        width: 100%;
+        padding: 4px 0 !important;
+        background: transparent !important;
+        border: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+        outline: none !important;
+        color: #0f172a !important;
+        font-size: 13.5px !important;
+        line-height: 1.5 !important;
+        font-family: inherit !important;
+        resize: none !important;
+        min-height: 30px !important;
+        max-height: 120px !important;
+        tab-size: 2;
+        white-space: pre-wrap;
+        word-break: break-word;
+        overflow-y: hidden;
+        box-sizing: border-box !important;
 
-    &:hover:not(:disabled) {
-      opacity: 0.95;
-      box-shadow: 0 3px 10px rgba(2, 132, 199, 0.3);
-      transform: translateY(-1px);
-    }
+        &::placeholder {
+          color: #94a3b8;
+        }
 
-    &:disabled {
-      opacity: 0.4;
-      cursor: not-allowed;
-    }
-  }
+        &:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
 
-  .ur-chatbot-btn-stop,
-  .btn-stop {
-    background: #ef4444 !important;
-    border: none !important;
-    color: #ffffff !important;
-    width: 38px !important;
-    height: 38px !important;
-    min-width: 38px !important;
-    max-width: 38px !important;
-    min-height: 38px !important;
-    max-height: 38px !important;
-    border-radius: 8px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    cursor: pointer;
-    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
-    transition: all 0.2s ease;
-    flex-shrink: 0;
-    padding: 0 !important;
-    margin: 0 !important;
-    line-height: 1 !important;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(148, 163, 184, 0.5) transparent;
 
-    &:hover {
-      background: #dc2626;
-      transform: translateY(-1px);
+        &::-webkit-scrollbar {
+          width: 5px;
+        }
+        &::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        &::-webkit-scrollbar-thumb {
+          background: rgba(148, 163, 184, 0.5);
+          border-radius: 6px;
+        }
+      }
+
+      .ur-chatbot-card-bottom-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        margin-top: 2px;
+      }
+
+      .ur-chatbot-card-bottom-left {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .ur-chatbot-card-bottom-right {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        position: relative;
+      }
+
+      .ur-chatbot-btn-thinking-toggle {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        color: #94a3b8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        padding: 0;
+
+        svg {
+          flex-shrink: 0;
+          color: inherit;
+        }
+
+        &:hover:not(:disabled) {
+          background: #f1f5f9;
+          color: #475569;
+        }
+
+        &.is-active:not(:disabled) {
+          color: #0284c7;
+
+          &:hover {
+            background: #e0f2fe;
+            color: #0369a1;
+          }
+        }
+
+        &:disabled {
+          opacity: 0.35;
+          color: #cbd5e1;
+          cursor: not-allowed;
+          background: transparent;
+        }
+      }
+
+      .ur-chatbot-model-select-wrapper {
+        position: relative;
+      }
+
+      .ur-chatbot-model-select-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 28px;
+        padding: 0 8px 0 10px;
+        border-radius: 14px;
+        border: none;
+        background: transparent;
+        color: #334155;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        user-select: none;
+
+        &:hover:not(:disabled) {
+          background: #f1f5f9;
+          color: #0f172a;
+        }
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .ur-chatbot-model-select-name {
+          max-width: 140px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          letter-spacing: -0.1px;
+        }
+
+        .ur-chatbot-model-chevron {
+          transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+          color: #64748b;
+          flex-shrink: 0;
+
+          &.is-open {
+            transform: rotate(180deg);
+          }
+        }
+      }
+
+      .ur-chatbot-model-menu {
+        position: absolute;
+        bottom: calc(100% + 10px);
+        right: 0;
+        width: 280px;
+        max-width: calc(100vw - 48px);
+        background: rgba(255, 255, 255, 0.98);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        box-shadow: 0 14px 34px -4px rgba(15, 23, 42, 0.16), 0 4px 12px -2px rgba(15, 23, 42, 0.08);
+        padding: 5px;
+        z-index: 120;
+        user-select: none;
+      }
+
+      .ur-chatbot-model-menu-list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        max-height: 240px;
+        overflow-y: auto;
+      }
+
+      .ur-chatbot-model-option {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 10px;
+        border-radius: 9px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        border: 1px solid transparent;
+
+        &:hover {
+          background: #f8fafc;
+        }
+
+        &.is-selected {
+          background: #eff6ff;
+          border-color: #bfdbfe;
+
+          .ur-chatbot-model-option-name {
+            color: #1d4ed8;
+            font-weight: 600;
+          }
+        }
+
+        .ur-chatbot-model-option-main {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          flex: 1;
+          min-width: 0;
+        }
+
+        .ur-chatbot-model-option-name {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 12.5px;
+          font-weight: 500;
+          color: #0f172a;
+        }
+
+        .ur-chatbot-model-option-desc {
+          font-size: 11px;
+          color: #64748b;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .ur-chatbot-model-tag {
+          font-size: 9.5px;
+          font-weight: 600;
+          padding: 1px 5px;
+          border-radius: 8px;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+
+          &.badge-reasoning {
+            background: #f3e8ff;
+            color: #7e22ce;
+          }
+          &.badge-vision {
+            background: #e0f2fe;
+            color: #0284c7;
+          }
+          &.badge-fast {
+            background: #dcfce7;
+            color: #15803d;
+          }
+          &.badge-default {
+            background: #f1f5f9;
+            color: #475569;
+          }
+        }
+
+        .ur-chatbot-model-check-icon {
+          flex-shrink: 0;
+          margin-left: 6px;
+        }
+      }
+
+      /* Animation dropdown popover */
+      .ur-chatbot-dropdown-popover-enter-active,
+      .ur-chatbot-dropdown-popover-leave-active {
+        transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+
+      .ur-chatbot-dropdown-popover-enter,
+      .ur-chatbot-dropdown-popover-leave-to {
+        opacity: 0;
+        transform: translateY(6px) scale(0.96);
+      }
+
+      .ur-chatbot-btn-plus {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        border: none;
+        background: transparent;
+        color: #475569;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        padding: 0;
+
+        &:hover:not(:disabled) {
+          background: #e2e8f0;
+          color: #0f172a;
+        }
+
+        &:disabled {
+          opacity: 0.4;
+          cursor: not-allowed;
+        }
+      }
+
+      .ur-chatbot-btn-send-gemini {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: none;
+        background: #93c5fd;
+        color: #0f172a;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        box-shadow: 0 1px 3px rgba(147, 197, 253, 0.4);
+        padding: 0;
+
+        &:hover:not(:disabled) {
+          background: #60a5fa;
+          color: #020617;
+          transform: translateY(-1px);
+          box-shadow: 0 3px 8px rgba(96, 165, 250, 0.4);
+        }
+
+        &:disabled {
+          background: #e2e8f0;
+          color: #94a3b8;
+          opacity: 0.7;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+      }
+
+      .ur-chatbot-btn-stop-gemini {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: none;
+        background: #ef4444;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.18s ease;
+        padding: 0;
+        box-shadow: 0 1px 4px rgba(239, 68, 68, 0.3);
+
+        &:hover {
+          background: #dc2626;
+          transform: translateY(-1px);
+        }
+      }
     }
   }
 
@@ -5022,6 +6827,7 @@ export default {
     align-items: center;
     min-height: 90px;
     background: radial-gradient(circle at center, #ffffff 0%, #fbfcfd 100%);
+    color: initial;
 
     scrollbar-width: thin;
     scrollbar-color: #cbd5e1 #f1f5f9;
@@ -5056,6 +6862,7 @@ export default {
     display: flex;
     justify-content: center;
     align-items: center;
+    color: initial;
 
     > svg {
       max-width: 100%;
@@ -5063,6 +6870,24 @@ export default {
       display: block;
       margin: 0 auto;
       filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.03));
+
+      // Không để quy tắc typography của markdown (.ur-chatbot-markdown) ghi đè lên các nhãn trong SVG
+      p {
+        margin: 0 !important;
+        color: inherit !important;
+      }
+
+      foreignObject {
+        div, span {
+          color: inherit;
+        }
+      }
+
+      .nodeLabel,
+      .edgeLabel,
+      .label {
+        font-family: inherit;
+      }
     }
   }
 
@@ -5641,8 +7466,8 @@ export default {
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(15, 23, 42, 0.88);
-    backdrop-filter: blur(10px);
+    // background: rgba(15, 23, 42, 0.88);
+    backdrop-filter: blur(5px);
     z-index: 100000;
     display: flex;
     align-items: center;
