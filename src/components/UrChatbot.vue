@@ -228,6 +228,18 @@
           </span>
         </div>
         <div class="ur-chatbot-header-actions header-actions">
+          <!-- Nút Quản lý Công cụ Agent -->
+          <button
+            class="ur-chatbot-btn-header-action btn-header-action"
+            title="Quản lý Công cụ Agent (Tools Manager)"
+            @click="isToolsModalOpen = true"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"></circle>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+          </button>
+
           <!-- Nút Làm mới / Reset cuộc trò chuyện -->
           <button
             class="ur-chatbot-btn-header-action btn-header-action"
@@ -378,8 +390,17 @@
 
           <!-- Tin nhắn của Bot có render Markdown & Highlight Code -->
           <div v-else class="ur-chatbot-msg-bot-wrapper msg-bot-wrapper">
-            <!-- Hiệu ứng typing 3 chấm hiển thị NGAY LẬP TỨC khi bot chưa có chữ -->
-            <div v-if="!msg.text && (!msg.thinking || !thinking)" class="ur-chatbot-typing-indicator msg-typing-indicator">
+            <!-- Badge trạng thái Tool Calling khi AI truy xuất dữ liệu ngoài -->
+            <div v-if="msg.activeTool" class="ur-chatbot-tool-status-badge" :class="{ 'is-running': msg.activeTool.running }">
+              <span v-if="msg.activeTool.running" class="ur-chatbot-tool-spinner">⚡</span>
+              <span v-else class="ur-chatbot-tool-check">✓</span>
+              <span class="ur-chatbot-tool-msg">
+                {{ msg.activeTool.running ? msg.activeTool.message : ('Đã nạp dữ liệu từ công cụ: ' + msg.activeTool.name + (msg.activeTool.executionTimeMs != null ? ' (' + msg.activeTool.executionTimeMs + 'ms)' : '')) }}
+              </span>
+            </div>
+
+            <!-- Hiệu ứng typing 3 chấm hiển thị NGAY LẬP TỨC khi bot chưa có chữ và không gọi tool -->
+            <div v-if="!msg.text && (!msg.thinking || !thinking) && !msg.activeTool" class="ur-chatbot-typing-indicator msg-typing-indicator">
               <span class="ur-chatbot-typing-dots typing-dots">
                 <span class="ur-chatbot-dot dot"></span>
                 <span class="ur-chatbot-dot dot"></span>
@@ -1279,10 +1300,14 @@
         </div>
       </div>
     </transition>
+
+    <!-- Modal Quản lý Tools Agent -->
+    <ToolsModal :visible="isToolsModalOpen" @close="isToolsModalOpen = false" />
   </div>
 </template>
 
 <script>
+import ToolsModal from './ToolsModal.vue';
 import MarkdownIt from 'markdown-it';
 import markdownItTaskLists from 'markdown-it-task-lists';
 import hljs from 'highlight.js';
@@ -1775,6 +1800,9 @@ function detectLanguage(text) {
 
 export default {
   name: 'UrChatbot',
+  components: {
+    ToolsModal
+  },
   props: {
     botName: {
       type: String,
@@ -1798,7 +1826,7 @@ export default {
     },
     systemPrompt: {
       type: String,
-      default: 'Bạn là Astro Bot AI - một trợ lý không gian thông minh am hiểu công nghệ, lập trình và khoa học. NGUYÊN TẮC BẮT BUỘC: 1. Luôn tự động nhận diện và phản hồi bằng ĐÚNG NGÔN NGỮ mà người dùng vừa sử dụng trong câu hỏi. 2. Khi viết code, luôn sử dụng markdown code block có chỉ định tên ngôn ngữ cụ thể. 3. Khi người dùng yêu cầu hình ảnh hoặc khi chia sẻ ảnh minh họa, hãy luôn sử dụng trực tiếp cú pháp markdown ảnh ![mô tả ngắn](url) trong nội dung văn bản thông thường (TUYỆT ĐỐI KHÔNG bọc mã ảnh vào trong code block ```markdown ... ```) để hình ảnh được hiển thị trực tiếp cho người dùng xem. 4. Khi người dùng yêu cầu vẽ lưu đồ, sơ đồ luồng, sơ đồ thuật toán, biểu đồ trình tự, kiến trúc hệ thống hoặc quy trình, hãy luôn sử dụng cú pháp biểu đồ Mermaid chuẩn trong code block ```mermaid ... ``` (hỗ trợ đầy đủ Mermaid v11: flowchart, sequenceDiagram, gantt, pie, mindmap, quadrantChart, sankey-beta, timeline, xychart-beta, classDiagram, stateDiagram-v2, erDiagram, journey, gitGraph) để hệ thống tự động kết xuất biểu đồ đồ hoạ trực quan đẹp mắt. QUY TẮC MERMAID BẮT BUỘC ĐỂ TRÁNH LỖI CÚ PHÁP: - Trong flowchart: MỌI nhãn node có chứa dấu ngoặc vuông [], ngoặc tròn (), dấu so sánh (<, >), phép gán (=), dấu hỏi (?) hay phép tính toán BẮT BUỘC PHẢI BỌC TRONG DẤU NGOẶC KÉP, ví dụ: A["Start"], B{"i < n"}, C["swapped = false"], E{"arr[j] > arr[j+1]?"}, F["swap arr[j], arr[j+1]"], J["Break (sorted)"]. Tuyệt đối KHÔNG viết B{i < n} hay F[arr[j]] vì sẽ làm hỏng parser. - Trong classDiagram: Dùng dấu ngã ~ cho generic types như List~String~ thay vì List<String>. - Trong pie chart: Nhãn lát cắt luôn bọc trong ngoặc kép: "Label" : 40. - Không dùng từ khoá bảo lưu (end, subgraph, class, style) làm ID node.'
+      default: 'Bạn là Astro Bot AI - một trợ lý không gian thông minh am hiểu công nghệ, lập trình và khoa học.'
     },
     historyLimit: {
       type: Number,
@@ -1874,6 +1902,7 @@ export default {
       },
       isExpanded: false, // Mở rộng theo chiều ngang
       isFullscreen: false, // Chế độ toàn màn hình
+      isToolsModalOpen: false, // Modal quản lý Dynamic Tools Agent
       showResetConfirm: false, // Modal xác nhận làm mới cuộc trò chuyện
       userMsgExpandedMap: {}, // Map lưu trạng thái expand của từng tin nhắn user
       userMsgCollapsibleMap: {}, // Map lưu trạng thái có dài quá 3 dòng của từng tin nhắn user
@@ -4407,6 +4436,25 @@ export default {
                 continue;
               }
 
+              // --- Event đặc biệt: trạng thái Tool Calling từ Agent Backend ---
+              if (parsed.__status__) {
+                const st = parsed.__status__;
+                if (st.type === 'tool_start') {
+                  this.$set(botMsgObj, 'activeTool', {
+                    name: st.tool,
+                    message: st.message || `Đang gọi tool: ${st.tool}...`,
+                    running: true
+                  });
+                } else if (st.type === 'tool_done') {
+                  if (botMsgObj.activeTool) {
+                    this.$set(botMsgObj.activeTool, 'running', false);
+                    this.$set(botMsgObj.activeTool, 'executionTimeMs', st.executionTimeMs);
+                  }
+                }
+                this.scrollToBottom();
+                continue;
+              }
+
               const choice = (parsed.choices && parsed.choices[0]) || null;
               const delta = (choice && choice.delta) || null;
               if (!delta) continue;
@@ -4523,6 +4571,46 @@ export default {
 @keyframes urChatbotCursorBlink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }
+}
+
+@keyframes urChatbotPulseTool {
+  0% { transform: scale(0.9); opacity: 0.7; }
+  100% { transform: scale(1.25); opacity: 1; }
+}
+
+.ur-chatbot-tool-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #00f0ff;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 10px rgba(0, 240, 255, 0.1);
+
+  &.is-running {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.4);
+    color: #fbbf24;
+  }
+
+  .ur-chatbot-tool-spinner {
+    display: inline-block;
+    animation: urChatbotPulseTool 0.8s infinite alternate;
+  }
+
+  .ur-chatbot-tool-check {
+    color: #10b981;
+    font-weight: bold;
+  }
+
+  .ur-chatbot-tool-msg {
+    font-size: 12px;
+    font-weight: 500;
+  }
 }
 
 @keyframes urChatbotPulseAura {
