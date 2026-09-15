@@ -66,42 +66,177 @@
     h3 { font-size: 14px; }
     h4 { font-size: 13.5px; }
 
-    /* Danh sách có thứ tự & không có thứ tự */
-    ul:not(.contains-task-list) {
-      list-style-type: disc !important;
-      margin: 8px 0 8px 22px !important;
-      padding: 0 !important;
-
-      ul {
-        list-style-type: circle !important;
-        margin: 4px 0 4px 18px !important;
-      }
-      ol {
-        list-style-type: decimal !important;
-        margin: 4px 0 4px 18px !important;
-      }
-    }
-
-    ol {
-      list-style-type: decimal !important;
-      margin: 8px 0 8px 22px !important;
-      padding: 0 !important;
-
-      ol {
-        list-style-type: lower-alpha !important;
-        margin: 4px 0 4px 18px !important;
-      }
-      ul {
-        list-style-type: disc !important;
-        margin: 4px 0 4px 18px !important;
-      }
-    }
-
+    /* Danh sách có thứ tự & không có thứ tự (Bảo vệ list-style khỏi CSS reset toàn cục của dự án cha) */
     li {
       display: list-item !important;
       margin-bottom: 4px !important;
       line-height: 1.6 !important;
       color: #1e293b !important;
+
+      > p {
+        margin-top: 0 !important;
+        margin-bottom: 4px !important;
+      }
+      > p:last-child {
+        margin-bottom: 0 !important;
+      }
+    }
+
+    li:not(.task-list-item)::marker {
+      display: inline !important;
+      content: normal !important;
+    }
+
+    /* 1. Danh sách không thứ tự (Unordered List) */
+    ul:not(.contains-task-list) {
+      list-style: disc outside !important;
+      list-style-type: disc !important;
+      list-style-position: outside !important;
+      margin: 8px 0 8px 24px !important;
+      padding: 0 !important;
+
+      /* Cấp 1: Dấu chấm tròn đặc (disc) */
+      > li:not(.task-list-item) {
+        list-style: disc outside !important;
+        list-style-type: disc !important;
+        list-style-position: outside !important;
+        display: list-item !important;
+      }
+
+      /* Cấp 2: ul trong ul (vòng tròn rỗng - circle) */
+      ul:not(.contains-task-list) {
+        list-style: circle outside !important;
+        list-style-type: circle !important;
+        list-style-position: outside !important;
+        margin: 4px 0 4px 20px !important;
+        padding: 0 !important;
+
+        > li:not(.task-list-item) {
+          list-style: circle outside !important;
+          list-style-type: circle !important;
+          list-style-position: outside !important;
+          display: list-item !important;
+        }
+
+        /* Cấp 3: ul trong ul cấp 2 (hình vuông đặc - square) */
+        ul:not(.contains-task-list) {
+          list-style: square outside !important;
+          list-style-type: square !important;
+          list-style-position: outside !important;
+          margin: 4px 0 4px 20px !important;
+          padding: 0 !important;
+
+          > li:not(.task-list-item) {
+            list-style: square outside !important;
+            list-style-type: square !important;
+            list-style-position: outside !important;
+            display: list-item !important;
+          }
+        }
+      }
+
+      /* ol lồng trong ul (số thập phân) */
+      ol {
+        list-style: decimal outside !important;
+        list-style-type: decimal !important;
+        list-style-position: outside !important;
+        margin: 4px 0 4px 20px !important;
+        padding: 0 !important;
+
+        > li:not(.task-list-item) {
+          list-style: decimal outside !important;
+          list-style-type: decimal !important;
+          list-style-position: outside !important;
+          display: list-item !important;
+        }
+      }
+    }
+
+    /* 2. Danh sách có thứ tự (Ordered List) */
+    ol {
+      list-style: decimal outside !important;
+      list-style-type: decimal !important;
+      list-style-position: outside !important;
+      margin: 8px 0 8px 24px !important;
+      padding: 0 !important;
+
+      /* Cấp 1: Số thập phân (1, 2, 3) */
+      > li:not(.task-list-item) {
+        list-style: decimal outside !important;
+        list-style-type: decimal !important;
+        list-style-position: outside !important;
+        display: list-item !important;
+      }
+
+      /* Cấp 2: ol trong ol (chữ cái thường: a, b, c) */
+      ol {
+        list-style: lower-alpha outside !important;
+        list-style-type: lower-alpha !important;
+        list-style-position: outside !important;
+        margin: 4px 0 4px 20px !important;
+        padding: 0 !important;
+
+        > li:not(.task-list-item) {
+          list-style: lower-alpha outside !important;
+          list-style-type: lower-alpha !important;
+          list-style-position: outside !important;
+          display: list-item !important;
+        }
+
+        /* Cấp 3: ol trong ol cấp 2 (chữ số La Mã thường: i, ii, iii) */
+        ol {
+          list-style: lower-roman outside !important;
+          list-style-type: lower-roman !important;
+          list-style-position: outside !important;
+          margin: 4px 0 4px 20px !important;
+          padding: 0 !important;
+
+          > li:not(.task-list-item) {
+            list-style: lower-roman outside !important;
+            list-style-type: lower-roman !important;
+            list-style-position: outside !important;
+            display: list-item !important;
+          }
+        }
+      }
+
+      /* ul lồng trong ol (dấu chấm tròn đặc) */
+      ul:not(.contains-task-list) {
+        list-style: disc outside !important;
+        list-style-type: disc !important;
+        list-style-position: outside !important;
+        margin: 4px 0 4px 20px !important;
+        padding: 0 !important;
+
+        > li:not(.task-list-item) {
+          list-style: disc outside !important;
+          list-style-type: disc !important;
+          list-style-position: outside !important;
+          display: list-item !important;
+        }
+      }
+    }
+
+    /* Hỗ trợ các thuộc tính HTML type tùy chỉnh trên thẻ <ol> */
+    ol[type="a"] > li:not(.task-list-item),
+    ol[type="a"] ol > li:not(.task-list-item) {
+      list-style-type: lower-alpha !important;
+    }
+    ol[type="A"] > li:not(.task-list-item),
+    ol[type="A"] ol > li:not(.task-list-item) {
+      list-style-type: upper-alpha !important;
+    }
+    ol[type="i"] > li:not(.task-list-item),
+    ol[type="i"] ol > li:not(.task-list-item) {
+      list-style-type: lower-roman !important;
+    }
+    ol[type="I"] > li:not(.task-list-item),
+    ol[type="I"] ol > li:not(.task-list-item) {
+      list-style-type: upper-roman !important;
+    }
+    ol[type="1"] > li:not(.task-list-item),
+    ol[type="1"] ol > li:not(.task-list-item) {
+      list-style-type: decimal !important;
     }
 
     a {

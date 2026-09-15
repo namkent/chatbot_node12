@@ -70,6 +70,7 @@
           :pending-images="pendingImages"
           :is-thinking-active="isThinkingActive"
           :is-current-model-support-thinking="isCurrentModelSupportThinking"
+          :is-current-model-support-vision="isCurrentModelSupportVision"
           :thinking-tooltip="thinkingTooltip"
           :show-model-dropdown="showModelDropdown"
           :current-model-display-name="currentModelDisplayName"
@@ -227,10 +228,10 @@ export default {
     models: {
       type: Array,
       default: () => [
-        { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', desc: 'Lý luận sâu, toán học & code', badge: 'Reasoning', badgeType: 'badge-reasoning', supportsThinking: true },
-        { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B', desc: 'Đa phương thức, hiểu ảnh & tiếng Việt', badge: 'Vision', badgeType: 'badge-vision', supportsThinking: false },
-        { id: 'qwen/qwen3.6-27b', name: 'Qwen 3.6 27B', desc: 'Nhận diện ảnh nhanh, siêu tốc', badge: 'Vision', badgeType: 'badge-vision', supportsThinking: false },
-        { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B', desc: 'Suy luận nhanh, tốc độ phản hồi cao', badge: 'Reasoning', badgeType: 'badge-reasoning', supportsThinking: true }
+        { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', desc: 'Lý luận sâu, toán học, code & thị giác', thinking: true, vision: true },
+        { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B', desc: 'Đa phương thức, hiểu ảnh & tiếng Việt', thinking: false, vision: true },
+        { id: 'qwen/qwen3.6-27b', name: 'Qwen 3.6 27B', desc: 'Nhận diện ảnh nhanh, siêu tốc', thinking: false, vision: true },
+        { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B', desc: 'Suy luận nhanh, tốc độ phản hồi cao', thinking: true, vision: false }
       ]
     }
   },
@@ -298,14 +299,21 @@ export default {
       const found = this.modelListOptions.find(m => m.id === this.effectiveModel);
       return found ? found.name : this.effectiveModel;
     },
+    isCurrentModelSupportVision() {
+      const found = this.modelListOptions.find(m => m.id === this.effectiveModel);
+      if (!found) {
+        return /vision|vl|qwen|gpt-4o|gemini|claude|120b/i.test(this.effectiveModel);
+      }
+      if (typeof found.vision === 'boolean') return found.vision;
+      if (typeof found.supportsVision === 'boolean') return found.supportsVision;
+      return (found.badge === 'Vision' || /vision|vl|qwen|gpt-4o|gemini|claude|120b/i.test(found.id));
+    },
     isCurrentModelSupportThinking() {
       const found = this.modelListOptions.find(m => m.id === this.effectiveModel);
       if (!found) {
         return /gpt-oss|120b|20b|deepseek-r1|reasoning|r1/i.test(this.effectiveModel);
       }
-      if (/gpt-oss-20b|gpt-oss-120b|deepseek-r1/i.test(found.id)) {
-        return true;
-      }
+      if (typeof found.thinking === 'boolean') return found.thinking;
       if (typeof found.supportsThinking === 'boolean') return found.supportsThinking;
       return (found.badge === 'Reasoning' || /gpt-oss|120b|20b|deepseek-r1|reasoning|r1/i.test(found.id));
     },
@@ -366,6 +374,8 @@ export default {
   methods: {
     startFreshNewChat() {
       if (this.isStreaming) this.stopStreaming();
+      this.suggestedPrompts = [];
+      this.suggestedTitle = '';
       const existingEmpty = this.sessions.find(
         s => s.title === 'Cuộc trò chuyện mới' && (!s.messageList || s.messageList.filter(m => m.sender === 'user').length === 0)
       );
@@ -442,11 +452,18 @@ export default {
     loadSession(session) {
       if (!session) return;
       this.activeSessionId = session.id;
+      this.suggestedPrompts = Array.isArray(session.suggestedPrompts) ? session.suggestedPrompts : [];
+      this.suggestedTitle = session.suggestedTitle || '';
       const rawList = Array.isArray(session.messageList) ? session.messageList : [];
-      this.messageList = rawList.map(m => ({
-        ...m,
-        html: m.sender === 'bot' && m.text ? this.renderHtml(m.text, false) : ''
-      }));
+      this.messageList = rawList.map((m, idx) => {
+        const isGreeting = (idx === 0 && m.id === 1 && (!rawList[1] || rawList[1].sender === 'user'));
+        const normalizedSender = (m.sender === 'bot' && !isGreeting && m.id !== 1 && !m.isResetNotice) ? 'assistant' : m.sender;
+        return {
+          ...m,
+          sender: normalizedSender,
+          html: (normalizedSender === 'bot' || normalizedSender === 'assistant') && m.text ? this.renderHtml(m.text, false) : ''
+        };
+      });
       if (this.messageList.length === 0) {
         this.messageList = [
           {
@@ -479,6 +496,8 @@ export default {
         }
         current.messageList = this.messageList;
         current.apiMessagesHistory = this.apiMessagesHistory;
+        current.suggestedPrompts = this.suggestedPrompts;
+        current.suggestedTitle = this.suggestedTitle;
         current.updatedAt = Date.now();
         current.userId = this.userId;
         current.userName = this.userName;
@@ -568,6 +587,8 @@ export default {
     },
     handleNewChat() {
       if (this.isStreaming) this.stopStreaming();
+      this.suggestedPrompts = [];
+      this.suggestedTitle = '';
       this.saveCurrentSession();
       this.startFreshNewChat();
       this.$emit('session-change', null);
@@ -665,7 +686,7 @@ export default {
       this.activeMermaidModal.visible = false;
     },
     handleBodyClick(e) {
-      const copyBtn = e.target.closest('.ur-chatbot-copy-btn');
+      const copyBtn = e.target.closest('.ur-chatbot-copy-btn, .copy-code-btn, .ur-chatbot-btn-copy-code, .btn-copy-code');
       if (copyBtn && window.__copyCodeBlock) {
         window.__copyCodeBlock(copyBtn);
         return;
@@ -698,7 +719,32 @@ export default {
       if (copyMermaidBtn) {
         const rawCode = copyMermaidBtn.getAttribute('data-code');
         if (rawCode) {
-          navigator.clipboard.writeText(decodeURIComponent(rawCode));
+          const codeText = decodeURIComponent(rawCode);
+          const copySuccess = () => {
+            const iconCopy = copyMermaidBtn.querySelector('.ur-chatbot-mermaid-icon-copy');
+            const iconCopied = copyMermaidBtn.querySelector('.ur-chatbot-mermaid-icon-copied');
+            if (iconCopy && iconCopied) {
+              iconCopy.style.display = 'none';
+              iconCopied.style.display = 'inline-block';
+            }
+            copyMermaidBtn.title = 'Copied!';
+            copyMermaidBtn.classList.add('copied');
+            setTimeout(() => {
+              if (iconCopy && iconCopied) {
+                iconCopy.style.display = '';
+                iconCopied.style.display = 'none';
+              }
+              copyMermaidBtn.title = 'Sao chép mã';
+              copyMermaidBtn.classList.remove('copied');
+            }, 2000);
+          };
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(codeText).then(copySuccess).catch(() => {
+              window.__copyCodeBlock ? window.__copyCodeBlock(copyMermaidBtn) : copySuccess();
+            });
+          } else {
+            copySuccess();
+          }
         }
         return;
       }
@@ -896,7 +942,7 @@ export default {
       const botMessageId = Date.now() + 1;
       const botMsgObj = {
         id: botMessageId,
-        sender: 'bot',
+        sender: 'assistant',
         text: '',
         isStreaming: true,
         responseTime: null,
@@ -1014,6 +1060,7 @@ export default {
                 }
                 this.thinkingStartTime = this.thinkingStartTime || Date.now();
                 this.$set(botMsgObj, 'thinking', (botMsgObj.thinking || '') + reasoningDelta);
+                this.throttleScrollThinking();
               }
 
               const contentDelta = delta.content || '';
@@ -1042,6 +1089,7 @@ export default {
                     const currentThinking = rawAccumulatedContent.substring(thinkStart);
                     this.$set(botMsgObj, 'thinking', currentThinking);
                     this.$set(botMsgObj, 'text', '');
+                    this.throttleScrollThinking();
                   }
                 } else {
                   this.$set(botMsgObj, 'text', (botMsgObj.text || '') + contentDelta);
@@ -1093,6 +1141,14 @@ export default {
         this.scrollToBottom();
         this.saveCurrentSession();
       }
+    },
+    throttleScrollThinking() {
+      if (this._thinkingScrollPending) return;
+      this._thinkingScrollPending = true;
+      requestAnimationFrame(() => {
+        this._thinkingScrollPending = false;
+        this.scrollToBottom();
+      });
     },
     throttleUpdateHtml(botMsgObj) {
       if (this._htmlRafPending) return;
@@ -1160,6 +1216,9 @@ export default {
         });
       }
       this.scrollToBottom();
+      this.$nextTick(() => {
+        this.scrollToBottom();
+      });
     },
     extractSuggestionsFromText(botMsgObj) {
       if (!botMsgObj || !botMsgObj.text) return;
@@ -1236,7 +1295,7 @@ export default {
           } else if (item.text) {
             payloadMessages.push({ role: 'user', content: item.text });
           }
-        } else if (item.sender === 'bot' && !item.isResetNotice && item.text) {
+        } else if ((item.sender === 'bot' || item.sender === 'assistant') && !item.isResetNotice && item.text) {
           payloadMessages.push({ role: 'assistant', content: item.text });
         }
       }
@@ -1260,7 +1319,7 @@ export default {
       for (let i = 0; i < this.messageList.length; i++) {
         const m = this.messageList[i];
         if (m === botMsgObj) break;
-        if (m.sender === 'bot' && !m.isResetNotice && m.text) botIndex++;
+        if ((m.sender === 'bot' || m.sender === 'assistant') && !m.isResetNotice && m.text) botIndex++;
       }
 
       let historyBotIndex = 0;

@@ -94,8 +94,9 @@
             v-if="canAttachFile"
             type="button"
             class="ur-chatbot-btn-plus"
-            title="Đính kèm ảnh (hoặc kéo thả / dán Ctrl+V)"
-            :disabled="isLoading || isStreaming"
+            :class="{ 'is-disabled': !isCurrentModelSupportVision }"
+            :title="isCurrentModelSupportVision ? 'Đính kèm ảnh (hoặc kéo thả / dán Ctrl+V)' : 'Mô hình này không hỗ trợ thị giác (Vision not supported)'"
+            :disabled="isLoading || isStreaming || !isCurrentModelSupportVision"
             @click="triggerFileInput"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
@@ -165,8 +166,12 @@
                     <div class="ur-chatbot-model-option-main">
                       <div class="ur-chatbot-model-option-name">
                         <span>{{ mItem.name }}</span>
-                        <span v-if="mItem.badge" :class="['ur-chatbot-model-tag', mItem.badgeType || 'badge-default']">
-                          {{ mItem.badge }}
+                        <span
+                          v-for="(b, bIdx) in getModelBadges(mItem)"
+                          :key="bIdx"
+                          :class="['ur-chatbot-model-tag', b.type]"
+                        >
+                          {{ b.label }}
                         </span>
                       </div>
                       <div class="ur-chatbot-model-option-desc">{{ mItem.desc }}</div>
@@ -248,6 +253,10 @@ export default {
       type: Boolean,
       default: true
     },
+    isCurrentModelSupportVision: {
+      type: Boolean,
+      default: true
+    },
     thinkingTooltip: {
       type: String,
       default: ''
@@ -288,6 +297,32 @@ export default {
       if (this.$refs.chatInput) {
         this.$refs.chatInput.focus();
       }
+    },
+    getModelBadges(mItem) {
+      if (!mItem) return [];
+      const badges = [];
+      const hasThinking = typeof mItem.thinking === 'boolean'
+        ? mItem.thinking
+        : (typeof mItem.supportsThinking === 'boolean'
+          ? mItem.supportsThinking
+          : (mItem.badge === 'Reasoning' || /gpt-oss|120b|20b|deepseek-r1|reasoning|r1|think/i.test(mItem.id)));
+
+      const hasVision = typeof mItem.vision === 'boolean'
+        ? mItem.vision
+        : (typeof mItem.supportsVision === 'boolean'
+          ? mItem.supportsVision
+          : (mItem.badge === 'Vision' || /vision|vl|qwen|gpt-4o|gemini|claude/i.test(mItem.id)));
+
+      if (hasThinking) {
+        badges.push({ label: 'Reasoning', type: 'badge-reasoning' });
+      }
+      if (hasVision) {
+        badges.push({ label: 'Vision', type: 'badge-vision' });
+      }
+      if (badges.length === 0 && mItem.badge) {
+        badges.push({ label: mItem.badge, type: mItem.badgeType || 'badge-default' });
+      }
+      return badges;
     },
     triggerFileInput() {
       if (this.$refs.imageFileInput) {

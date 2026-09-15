@@ -61,6 +61,7 @@
         :pending-images="pendingImages"
         :is-thinking-active="isThinkingActive"
         :is-current-model-support-thinking="isCurrentModelSupportThinking"
+        :is-current-model-support-vision="isCurrentModelSupportVision"
         :thinking-tooltip="thinkingTooltip"
         :show-model-dropdown="showModelDropdown"
         :current-model-display-name="currentModelDisplayName"
@@ -237,10 +238,10 @@ export default {
     models: {
       type: Array,
       default: () => [
-        { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', desc: 'Lý luận sâu, toán học & code', badge: 'Reasoning', badgeType: 'badge-reasoning', supportsThinking: true },
-        { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B', desc: 'Đa phương thức, hiểu ảnh & tiếng Việt', badge: 'Vision', badgeType: 'badge-vision', supportsThinking: false },
-        { id: 'qwen/qwen3.6-27b', name: 'Qwen 3.6 27B', desc: 'Nhận diện ảnh nhanh, siêu tốc', badge: 'Vision', badgeType: 'badge-vision', supportsThinking: false },
-        { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B', desc: 'Suy luận nhanh, tốc độ phản hồi cao', badge: 'Reasoning', badgeType: 'badge-reasoning', supportsThinking: true }
+        { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', desc: 'Lý luận sâu, toán học, code & thị giác', thinking: true, vision: true },
+        { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B', desc: 'Đa phương thức, hiểu ảnh & tiếng Việt', thinking: true, vision: true },
+        { id: 'qwen/qwen3.6-27b', name: 'Qwen 3.6 27B', desc: 'Nhận diện ảnh nhanh, siêu tốc', thinking: false, vision: true },
+        { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B', desc: 'Suy luận nhanh, tốc độ phản hồi cao', thinking: true, vision: false }
       ]
     }
   },
@@ -331,18 +332,23 @@ export default {
       const found = this.modelListOptions.find(m => m.id === this.effectiveModel);
       return found ? found.name : this.effectiveModel;
     },
+    isCurrentModelSupportVision() {
+      const found = this.modelListOptions.find(m => m.id === this.effectiveModel);
+      if (!found) {
+        return /vision|vl|qwen|gpt-4o|gemini|claude/i.test(this.effectiveModel);
+      }
+      if (typeof found.vision === 'boolean') return found.vision;
+      if (typeof found.supportsVision === 'boolean') return found.supportsVision;
+      return (found.badge === 'Vision' || /vision|vl|qwen|gpt-4o|gemini|claude/i.test(found.id));
+    },
     isCurrentModelSupportThinking() {
       const found = this.modelListOptions.find(m => m.id === this.effectiveModel);
       if (!found) {
-        return /gpt-oss|120b|20b|deepseek-r1|reasoning|r1/i.test(this.effectiveModel);
+        return /gpt-oss|120b|20b|deepseek-r1|reasoning|r1|think/i.test(this.effectiveModel);
       }
-      if (/gpt-oss-20b|gpt-oss-120b|deepseek-r1/i.test(found.id)) {
-        return true;
-      }
-      if (typeof found.supportsThinking === 'boolean') {
-        return found.supportsThinking;
-      }
-      return (found.badge === 'Reasoning' || /gpt-oss|120b|20b|deepseek-r1|reasoning|r1/i.test(found.id));
+      if (typeof found.thinking === 'boolean') return found.thinking;
+      if (typeof found.supportsThinking === 'boolean') return found.supportsThinking;
+      return (found.badge === 'Reasoning' || /gpt-oss|120b|20b|deepseek-r1|reasoning|r1|think/i.test(found.id));
     },
     thinkingTooltip() {
       if (!this.isCurrentModelSupportThinking) {
@@ -555,7 +561,7 @@ export default {
     },
     handleBodyClick(e) {
       // 1. Copy code block
-      const copyBtn = e.target.closest('.ur-chatbot-copy-btn');
+      const copyBtn = e.target.closest('.ur-chatbot-copy-btn, .copy-code-btn, .ur-chatbot-btn-copy-code, .btn-copy-code');
       if (copyBtn && window.__copyCodeBlock) {
         window.__copyCodeBlock(copyBtn);
         return;
@@ -839,7 +845,7 @@ export default {
       const botMessageId = Date.now() + 1;
       const botMsgObj = {
         id: botMessageId,
-        sender: 'bot',
+        sender: 'assistant',
         text: '',
         isStreaming: true,
         responseTime: null,
@@ -957,6 +963,7 @@ export default {
                 }
                 this.thinkingStartTime = this.thinkingStartTime || Date.now();
                 this.$set(botMsgObj, 'thinking', (botMsgObj.thinking || '') + reasoningDelta);
+                this.throttleScrollThinking();
               }
 
               const contentDelta = delta.content || '';
@@ -985,6 +992,7 @@ export default {
                     const currentThinking = rawAccumulatedContent.substring(thinkStart);
                     this.$set(botMsgObj, 'thinking', currentThinking);
                     this.$set(botMsgObj, 'text', '');
+                    this.throttleScrollThinking();
                   }
                 } else {
                   this.$set(botMsgObj, 'text', (botMsgObj.text || '') + contentDelta);
@@ -1041,6 +1049,14 @@ export default {
         this.saveToLocalStorage();
       }
     },
+    throttleScrollThinking() {
+      if (this._thinkingScrollPending) return;
+      this._thinkingScrollPending = true;
+      requestAnimationFrame(() => {
+        this._thinkingScrollPending = false;
+        this.scrollToBottom();
+      });
+    },
     throttleUpdateHtml(botMsgObj) {
       if (this._htmlRafPending) return;
       this._htmlRafPending = true;
@@ -1083,7 +1099,8 @@ export default {
           text: botMsgObj.text,
           html: botMsgObj.html,
           responseTime: botMsgObj.responseTime || '',
-          lang: botMsgObj.lang || '',
+          timestamp: botMsgObj.timestamp || new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          lang: botMsgObj.lang || 'vi',
           thinking: botMsgObj.thinking || '',
           thinkingDuration: botMsgObj.thinkingDuration || ''
         };
@@ -1108,6 +1125,9 @@ export default {
         });
       }
       this.scrollToBottom();
+      this.$nextTick(() => {
+        this.scrollToBottom();
+      });
     },
     extractSuggestionsFromText(botMsgObj) {
       if (!botMsgObj || !botMsgObj.text) return;
@@ -1188,7 +1208,7 @@ export default {
           } else if (item.text) {
             payloadMessages.push({ role: 'user', content: item.text });
           }
-        } else if (item.sender === 'bot' && !item.isResetNotice && item.text) {
+        } else if ((item.sender === 'bot' || item.sender === 'assistant') && !item.isResetNotice && item.text) {
           payloadMessages.push({ role: 'assistant', content: item.text });
         }
       }
@@ -1214,7 +1234,7 @@ export default {
       for (let i = 0; i < this.messageList.length; i++) {
         const m = this.messageList[i];
         if (m === botMsgObj) break;
-        if (m.sender === 'bot' && !m.isResetNotice && m.text) {
+        if ((m.sender === 'bot' || m.sender === 'assistant') && !m.isResetNotice && m.text) {
           botIndex++;
         }
       }
@@ -1292,14 +1312,17 @@ export default {
             const activeText = activeVersion ? activeVersion.text : (m.text || '');
             const activeThinking = activeVersion ? (activeVersion.thinking || '') : (m.thinking || '');
             const activeThinkingDuration = activeVersion ? (activeVersion.thinkingDuration || '') : (m.thinkingDuration || '');
+            const isGreeting = (idx === 0 && m.id === 1);
+            const normalizedSender = (m.sender === 'bot' && !isGreeting && m.id !== 1 && !m.isResetNotice) ? 'assistant' : m.sender;
             return {
               ...m,
+              sender: normalizedSender,
               text: activeText,
               thinking: activeThinking,
               thinkingDuration: activeThinkingDuration,
               isStreaming: false,
-              html: m.sender === 'bot' ? this.renderHtml(activeText, false) : '',
-              versions: hasVersions ? m.versions : (m.sender === 'bot' && activeText ? [{
+              html: (normalizedSender === 'bot' || normalizedSender === 'assistant') ? this.renderHtml(activeText, false) : '',
+              versions: hasVersions ? m.versions : ((normalizedSender === 'bot' || normalizedSender === 'assistant') && activeText ? [{
                 text: activeText,
                 html: this.renderHtml(activeText, false),
                 responseTime: m.responseTime || '',

@@ -265,12 +265,21 @@
     flex-direction: column;
     gap: 14px;
     padding: 4px 0 6px 2px;
+
+    &.is-streaming-view {
+      gap: 0;
+      padding: 4px 0 4px 2px;
+    }
   }
 
   .ur-chatbot-thinking-step-item {
     display: flex;
     align-items: flex-start;
     gap: 10px;
+
+    &.is-active-step {
+      animation: urThinkingStepFadeIn 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+    }
   }
 
   .ur-chatbot-thinking-bullet {
@@ -279,14 +288,52 @@
     line-height: 1.25;
     user-select: none;
     flex-shrink: 0;
+
+    &.is-pulsing {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px;
+      height: 18px;
+    }
+  }
+
+  .ur-chatbot-thinking-pulse-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    background-color: #0284c7;
+    border-radius: 50%;
+    animation: ur-thinking-pulse 1.4s ease-in-out infinite;
   }
 
   .ur-chatbot-thinking-step-body {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 3px;
     flex: 1;
     min-width: 0;
+  }
+
+  .ur-chatbot-thinking-step-title-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .ur-chatbot-thinking-step-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #0284c7;
+    background: #e0f2fe;
+    border: 1px solid rgba(2, 132, 199, 0.25);
+    border-radius: 9999px;
+    line-height: 1.4;
+    letter-spacing: 0.2px;
   }
 
   .ur-chatbot-thinking-step-title {
@@ -304,6 +351,48 @@
     white-space: pre-wrap;
     word-break: break-word;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  .ur-chatbot-thinking-cursor {
+    display: inline-block;
+    width: 2px;
+    height: 12px;
+    background: #0284c7;
+    margin-left: 4px;
+    vertical-align: -1px;
+    border-radius: 1px;
+    animation: ur-thinking-blink 0.8s infinite;
+  }
+
+  @keyframes ur-thinking-pulse {
+    0% {
+      transform: scale(0.9);
+      box-shadow: 0 0 0 0 rgba(2, 132, 199, 0.6);
+    }
+    70% {
+      transform: scale(1.15);
+      box-shadow: 0 0 0 5px rgba(2, 132, 199, 0);
+    }
+    100% {
+      transform: scale(0.9);
+      box-shadow: 0 0 0 0 rgba(2, 132, 199, 0);
+    }
+  }
+
+  @keyframes ur-thinking-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+
+  @keyframes urThinkingStepFadeIn {
+    from {
+      opacity: 0.3;
+      transform: translateY(3px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
 
   .ur-chatbot-actions-toolbar,
@@ -434,7 +523,7 @@
     cursor: pointer;
     color: #57606a;
     box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
-    z-index: 25;
+    z-index: 40 !important;
     transition: all 0.2s cubic-bezier(0.34, 1.25, 0.64, 1);
     flex-shrink: 0;
     padding: 0;

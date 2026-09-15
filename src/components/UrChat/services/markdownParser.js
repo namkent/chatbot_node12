@@ -197,7 +197,7 @@ md.renderer.rules.fence = function (tokens, idx) {
   return `<div class="ur-chatbot-code-card code-card">
     <div class="ur-chatbot-code-header code-header">
       <span class="ur-chatbot-code-lang code-lang">${displayLang}</span>
-      <button type="button" class="ur-chatbot-btn-copy-code btn-copy-code" data-code="${safeCode}" onclick="window.__copyCodeBlock(this)" title="Copy code" aria-label="Copy code">
+      <button type="button" class="ur-chatbot-copy-btn copy-code-btn ur-chatbot-btn-copy-code btn-copy-code" data-code="${safeCode}" onclick="window.__copyCodeBlock(this)" title="Copy code" aria-label="Copy code">
         <span class="icon-copy">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -218,32 +218,93 @@ md.renderer.rules.fence = function (tokens, idx) {
   </div>`;
 };
 
+// Fallback copy using textarea
+function fallbackCopyText(text, onSuccess) {
+  try {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.top = '0';
+    textArea.style.left = '0';
+    textArea.style.width = '2em';
+    textArea.style.height = '2em';
+    textArea.style.padding = '0';
+    textArea.style.border = 'none';
+    textArea.style.outline = 'none';
+    textArea.style.boxShadow = 'none';
+    textArea.style.background = 'transparent';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    if (successful && onSuccess) {
+      onSuccess();
+    }
+  } catch (err) {
+    console.error('[UrChatbot] Fallback copy failed:', err);
+  }
+}
+
 // Global Copy Code Handler
 export function setupCopyCodeGlobal() {
   if (typeof window !== 'undefined') {
     window.__copyCodeBlock = function (btn) {
+      if (!btn) return;
       const raw = btn.getAttribute('data-code');
-      if (!raw) return;
-      const text = decodeURIComponent(raw);
-      navigator.clipboard.writeText(text).then(() => {
+      let text = '';
+      if (raw) {
+        try {
+          text = decodeURIComponent(raw);
+        } catch (e) {
+          text = raw;
+        }
+      }
+      if (!text) {
+        const card = btn.closest('.ur-chatbot-code-card, .code-card');
+        if (card) {
+          const codeEl = card.querySelector('pre code, .code-pre code');
+          if (codeEl) {
+            text = codeEl.innerText || codeEl.textContent || '';
+          }
+        }
+      }
+      if (!text) return;
+
+      const copySuccess = () => {
         const copyIcon = btn.querySelector('.icon-copy');
         const copiedIcon = btn.querySelector('.icon-copied');
         if (copyIcon && copiedIcon) {
           copyIcon.style.display = 'none';
           copiedIcon.style.display = 'inline-flex';
-          btn.classList.add('copied');
-          btn.title = 'Copied!';
-          setTimeout(() => {
+        }
+        btn.classList.add('copied');
+        btn.title = 'Copied!';
+        setTimeout(() => {
+          if (copyIcon && copiedIcon) {
             copyIcon.style.display = 'inline-flex';
             copiedIcon.style.display = 'none';
-            btn.classList.remove('copied');
-            btn.title = 'Copy code';
-          }, 2000);
-        }
-      }).catch(err => {
-        console.error('Không thể sao chép:', err);
-      });
+          }
+          btn.classList.remove('copied');
+          btn.title = 'Copy code';
+        }, 2000);
+      };
+
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(copySuccess).catch(() => {
+          fallbackCopyText(text, copySuccess);
+        });
+      } else {
+        fallbackCopyText(text, copySuccess);
+      }
     };
+
+    document.addEventListener('click', function (e) {
+      const btn = e.target.closest('.ur-chatbot-copy-btn, .copy-code-btn, .ur-chatbot-btn-copy-code, .btn-copy-code');
+      if (btn) {
+        window.__copyCodeBlock(btn);
+      }
+    });
   }
 }
 setupCopyCodeGlobal();

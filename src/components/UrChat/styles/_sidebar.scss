@@ -723,7 +723,7 @@
   padding: 10px 24px 20px !important;
   box-sizing: border-box !important;
   position: relative !important;
-  z-index: 10 !important;
+  z-index: 30 !important;
 
   .ur-chatbot-footer,
   .chat-footer {
@@ -739,6 +739,7 @@
       left: 50% !important;
       transform: translateX(-50%) !important;
       bottom: calc(100% + 12px) !important;
+      z-index: 40 !important;
     }
   }
 }

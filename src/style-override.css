@@ -1,0 +1,19 @@
+/* ==========================================================================
+   GIẢ LẬP CSS RESET CỦA DỰ ÁN HOST (style-override.css)
+   Mục đích: Không hiển thị list ở toàn bộ project (list-style: none).
+   Được import trực tiếp tại main.js như môi trường thực tế của khách hàng.
+   ========================================================================== */
+
+/* Reset triệt để qua các thẻ ul, ol, li */
+ul, ol, li {
+  list-style: none !important;
+  list-style-type: none !important;
+  padding: 0;
+  margin: 0;
+}
+
+/* Reset triệt để qua selector toàn cục * */
+*, *::before, *::after {
+  list-style: none !important;
+  list-style-type: none !important;
+}

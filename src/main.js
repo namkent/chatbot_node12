@@ -7,6 +7,9 @@ import '@fontsource/noto-sans/500.css';
 import '@fontsource/noto-sans/600.css';
 import '@fontsource/noto-sans/700.css';
 
+// Giả lập file CSS Reset toàn cục từ dự án cha của người dùng
+import './style-override.css';
+
 Vue.config.productionTip = false;
 
 new Vue({

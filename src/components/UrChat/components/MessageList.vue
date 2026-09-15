@@ -120,6 +120,7 @@
             v-if="thinking && msg.thinking"
             :msg="msg"
             :thinking="thinking"
+            @scroll-bottom="$emit('scroll-bottom')"
           />
 
           <!-- Nội dung câu trả lời chính của Bot -->
@@ -129,8 +130,8 @@
             v-html="msg.html || defaultRenderHtml(msg.text, msg.isStreaming)"
           ></div>
 
-          <!-- Thanh action bar dưới câu trả lời của Bot -->
-          <div v-if="!msg.isStreaming && !msg.isError && !msg.isResetNotice && (!msg.text || msg.text.indexOf('Conversation has been reset!') === -1)" class="ur-chatbot-actions-toolbar msg-actions-toolbar">
+          <!-- Thanh action bar dưới câu trả lời của Bot: Chỉ hiển thị cho câu trả lời của assistant, không hiển thị cho tin chào sender = 'bot' -->
+          <div v-if="msg.sender !== 'bot' && !msg.isStreaming && !msg.isError && !msg.isResetNotice && (!msg.text || msg.text.indexOf('Conversation has been reset!') === -1)" class="ur-chatbot-actions-toolbar msg-actions-toolbar">
             <!-- Nút Prev / Next phân trang phiên bản -->
             <div v-if="getMsgVersionsCount(msg) > 1" class="ur-chatbot-version-nav">
               <button
